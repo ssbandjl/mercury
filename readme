@@ -1,0 +1,12 @@
+注册内存:
+参考daos: C:\Users\s30893\project\stor\storage\daos\daos.drawio
+...
+na_ofi_initialize
+  na_ofi_class->send_pool = hg_mem_pool_create(pool_chunk_size ... na_ofi_mem_buf_register 注册初始内存池
+  na_ofi_class->recv_pool = hg_mem_pool_create -> hg_mem_pool_create(size_t chunk_size
+    struct hg_mem_pool_block *hg_mem_pool_block = hg_mem_pool_block_alloc register_func
+      int rc = register_func(mem_ptr, block_size, flags, &mr_handle, arg) -> na_ofi_mem_buf_register -> na_ofi_mem_buf_register(const void *buf
+        rc = fi_mr_reg(na_ofi_class->domain->fi_domain, buf, len, access,
+
+  
+
