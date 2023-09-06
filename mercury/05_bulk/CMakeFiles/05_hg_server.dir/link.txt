@@ -1,0 +1,1 @@
+/usr/bin/cc      CMakeFiles/05_hg_server.dir/server.o  -o 05_hg_server  -L/opt/daos/prereq/debug/mercury/lib -rdynamic -lmercury -Wl,-rpath,/opt/daos/prereq/debug/mercury/lib 

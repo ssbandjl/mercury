@@ -1,3 +1,14 @@
+https://github.com/ssbandjl/mercury.git
+https://github.com/mercury-hpc/mercury
+git fetch upstream
+git merge upstream/master
+
+
+
+UCX 插件也可用作 libfabric 不可用或不建议使用的平台上的替代传输，当前支持的协议是 tcp 和动词, MPI 和 BMI (tcp) 插件仍然受支持，但逐渐被弃用，因此只能用作后备方法。 CCI 插件已弃用且不再受支持, 编译和运行 Mercury 需要各种软件包的最新版本。 请注意，使用这些软件包的过旧版本可能会导致很难追踪的间接错误, 
+
+fi_cq_open
+
 注册内存:
 参考daos: C:\Users\s30893\project\stor\storage\daos\daos.drawio
 ...
@@ -9,4 +20,23 @@ na_ofi_initialize
         rc = fi_mr_reg(na_ofi_class->domain->fi_domain, buf, len, access,
 
   
+编译bulk:
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib64/:/opt/daos/prereq/debug/mercury/lib/:/opt/daos/prereq/debug/mercury/include/
+export C_INCLUDE_PATH=$C_INCLUDE_PATH:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury.build/src/na:/home/xb/project/stor/daos/origindocker/daos/build/external/debug/mercury.build/src:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/src:/home/xb/project/stor/daos/origindocker/daos/build/external/debug/mercury/src/na:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/src/util:/home/xb/project/stor/daosorigin/docker/daos/build/external/debug/mercury/src/proc_extra
+
+cd /home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk
+make
+
+daos同步:
+rsync -rapvu /opt/daos root@182.200.53.61:/opt/
+
+
+bulk
+mercury/05_bulk/server.c -> main
+
+编译mercury:
+Running commands in /home/daos/docker/daos/build/external/debug/mercury.build
+cd /home/daos/docker/daos/build/external/debug/mercury.build
+cmake -DMERCURY_USE_CHECKSUMS=OFF -DOPA_LIBRARY=/opt/daos/prereq/debug/openpa/lib/libopa.a -DOPA_INCLUDE_DIR=/opt/daos/prereq/debug/openpa/include/ -DCMAKE_INSTALL_PREFIX=/opt/daos/prereq/debug/mercury -DBUILD_EXAMPLES=OFF -DMERCURY_USE_BOOST_PP=ON -DMERCURY_ENABLE_DEBUG=ON -DBUILD_TESTING=OFF -DNA_USE_OFI=ON -DBUILD_DOCUMENTATION=OFF -DBUILD_SHARED_LIBS=ON ../mercury -DOFI_INCLUDE_DIR=/opt/daos/prereq/debug/ofi/include -DOFI_LIBRARY=/opt/daos/prereq/debug/ofi/lib/libfabric.so
+
 

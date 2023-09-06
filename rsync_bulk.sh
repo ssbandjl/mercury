@@ -1,0 +1,1 @@
+rsync -rapvu /opt/daos root@182.200.53.61:/opt/

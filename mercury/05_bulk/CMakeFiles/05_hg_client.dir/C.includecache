@@ -1,0 +1,32 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk/client.c
+assert.h
+-
+stdio.h
+-
+unistd.h
+-
+stdlib.h
+-
+mercury.h
+-
+types.h
+/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk/types.h
+
+/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk/types.h
+mercury.h
+-
+mercury_bulk.h
+-
+mercury_proc_string.h
+-
+mercury_macros.h
+-
+
