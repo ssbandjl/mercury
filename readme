@@ -67,7 +67,12 @@ bulk rdma收发文件
 mercury/05_bulk/client.c
 ./client protocal server_addr filename
 main
+  HG_Set_log_level("debug")
+  state.hg_class = HG_Init(protocol, HG_FALSE)
+  state.hg_context = HG_Context_create(state.hg_class)
+  state.save_rpc_id = MERCURY_REGISTER(state.hg_class, "save", save_in_t, save_out_t, NULL)
   access(save_op.filename, F_OK) 检查文件是否存在
+  HG_Addr_lookup1(state.hg_context, lookup_callback, &save_op, server_address, HG_OP_ID_IGNORE) -> 查地址, 然后回调
   lookup_callback  
     save_operation* save_op = (save_operation*)(callback_info->arg); 回调通过指针传递参数
     FILE* file = fopen(save_op->filename,"r");
@@ -76,7 +81,9 @@ main
     fseek(file, 0L, SEEK_SET);
     save_op->buffer = calloc(1, save_op->size);
     fread(save_op->buffer,1,save_op->size,file)  // fread和fwrite的用法详解（以数据块的形式读写文件）
-    HG_Bulk_create (void**) &(save_op->buffer) 传入文件内容buf指针地址（二级指针）
+    HG_Create(state->hg_context, addr, state->save_rpc_id, &handle)
+    HG_Bulk_create(state->hg_class, 1, (void**) &(save_op->buffer), &(save_op->size), HG_BULK_READ_ONLY, &(save_op->bulk_handle));
+    HG_Bulk_create (void**) &(save_op->buffer) 传入文件内容buf指针地址（二级指针） -> 客户端创建BULK
       hg_buld malloc/memset 0
       hg_atomic_init32 ref_count 1 初始化引用计数
       转分段 注册分段 hg_bulk_register_segments 最大静态段=8， HG_BULK_STATIC_MAX
@@ -112,9 +119,15 @@ main
               ...desc.info.fi_mr_key = 远程键
           NA_Mem_handle_get_serialize_size na_ofi_mem_handle_get_serialize_size
             sizeof iovec info + iovcnt
-    HG_Forward
+    HG_Forward -> 客户端调用RDMA的发送接口, 服务端调用 HG_Bulk_transfer HG_BULK_PULL 拉取数据
     save_completed
+  while ... do -> 循环
+    ret = HG_Trigger(state.hg_context, 0, 1, &count)
+    HG_Progress(state.hg_context, 100)
+  ret = HG_Context_destroy(state.hg_context)
+  hg_return_t err = HG_Finalize(state.hg_class)
 
+----------
 
 server:
 mercury/05_bulk/server.c
@@ -129,7 +142,7 @@ main
     HG_Trigger
     HG_Progress
   save
-    HG_Bulk_transfer origin and local 对齐
+    HG_Bulk_transfer(stt->hg_context, save_bulk_completed, my_rpc_state, HG_BULK_PULL, info->addr, in.bulk_handle, 0, my_rpc_state->bulk_handle, 0, my_rpc_state->size, HG_OP_ID_IGNORE) origin and local 对齐 -> 服务端通过RDMA的单边读请求, 从客户端DMA拉取数据
   HG_Context_destroy
   HG_Finalize
 ---------- bulk ----------
