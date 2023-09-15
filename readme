@@ -40,3 +40,96 @@ cd /home/daos/docker/daos/build/external/debug/mercury.build
 cmake -DMERCURY_USE_CHECKSUMS=OFF -DOPA_LIBRARY=/opt/daos/prereq/debug/openpa/lib/libopa.a -DOPA_INCLUDE_DIR=/opt/daos/prereq/debug/openpa/include/ -DCMAKE_INSTALL_PREFIX=/opt/daos/prereq/debug/mercury -DBUILD_EXAMPLES=OFF -DMERCURY_USE_BOOST_PP=ON -DMERCURY_ENABLE_DEBUG=ON -DBUILD_TESTING=OFF -DNA_USE_OFI=ON -DBUILD_DOCUMENTATION=OFF -DBUILD_SHARED_LIBS=ON ../mercury -DOFI_INCLUDE_DIR=/opt/daos/prereq/debug/ofi/include -DOFI_LIBRARY=/opt/daos/prereq/debug/ofi/lib/libfabric.so
 
 
+---------- test ----------
+测试: Testing/perf/na/na_bw_put.c -> main(int argc, char *argv[])
+na_perf_init
+  NA_Test_init
+  NA_Context_create
+  NA_Poll_get_fd
+  info->poll_set = hg_poll_create()
+  hg_poll_add(info->poll_set, info->poll_fd, &poll_event)
+  info->request_class = hg_request_init(na_perf_request_progress, na_perf_request_trigger, info)
+  NA_Msg_get_max_unexpected_size
+  NA_Msg_buf_alloc
+  NA_Msg_init_unexpected
+  info->msg_exp_buf = NA_Msg_buf_alloc
+  info->rma_buf = hg_mem_aligned_alloc
+na_ret = na_perf_mem_handle_recv
+na_ret = na_perf_run
+  NA_Put
+
+---------- test ----------
+
+
+---------- bulk ----------
+bulk rdma收发文件
+
+mercury/05_bulk/client.c
+./client protocal server_addr filename
+main
+  access(save_op.filename, F_OK) 检查文件是否存在
+  lookup_callback  
+    save_operation* save_op = (save_operation*)(callback_info->arg); 回调通过指针传递参数
+    FILE* file = fopen(save_op->filename,"r");
+    fseek(file, 0L, SEEK_END)
+    save_op->size = ftell(file) 计算文件位置
+    fseek(file, 0L, SEEK_SET);
+    save_op->buffer = calloc(1, save_op->size);
+    fread(save_op->buffer,1,save_op->size,file)  // fread和fwrite的用法详解（以数据块的形式读写文件）
+    HG_Bulk_create (void**) &(save_op->buffer) 传入文件内容buf指针地址（二级指针）
+      hg_buld malloc/memset 0
+      hg_atomic_init32 ref_count 1 初始化引用计数
+      转分段 注册分段 hg_bulk_register_segments 最大静态段=8， HG_BULK_STATIC_MAX
+      hg_bulk_create_na_mem_descs 单独注册内存描述 individually 分为静态staic和动态数组dynamic
+        hg_bulk_register 注册段 传递索引i
+          NA_Mem_handle_create
+            mem_handler_create -> na_ofi_mem_handler_create
+              NA_UNUSED 编译参数 忽略编译告警
+              calloc
+              na_ofi_mem_desc s[0] 单段， d 多段
+              flags & 0xff 全1
+          NA_Mem_register
+            mem_register na_ofi_mem_register
+              requested_key 自增
+              NA_MEM_READ_ONLY 
+              access = FI_REMOTE_READ | FI_WRITE 远程读和本地写
+              fi_mr_regv 注册内存向量
+                rxm_mr_regv
+                  rxm_mr_get_msg_access
+                  fi_mr_regv
+                    vrb_mr_regv
+                      vrb_mr_cache_reg
+                        ofi_mr_rbt_find 如果有缓存就找红黑树
+                        util_mr_cache_create
+                        add_region
+                          vrb_mr_reg_common
+                            ibv_reg_mr 注册内存
+                            md->mr_fid.key = md->mr->rkey 远程键
+                            md->lkey = md->mr->lkey 本地键
+                            vrb_eq_write_event 写完成事件
+                  rxm_mr_init
+              fi_mr_key 取回内存key
+              ...desc.info.fi_mr_key = 远程键
+          NA_Mem_handle_get_serialize_size na_ofi_mem_handle_get_serialize_size
+            sizeof iovec info + iovcnt
+    HG_Forward
+    save_completed
+
+
+server:
+mercury/05_bulk/server.c
+./server addr
+main
+  HG_Init
+  HG_Addr_self
+  HG_Addr_to_string
+  HG_Context_create
+  HG_Register_data
+  do
+    HG_Trigger
+    HG_Progress
+  save
+    HG_Bulk_transfer origin and local 对齐
+  HG_Context_destroy
+  HG_Finalize
+---------- bulk ----------
