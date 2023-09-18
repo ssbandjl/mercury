@@ -3,3 +3,7 @@ build*
 .vs
 bulkdata
 *.o
+
+CMakeFiles
+.DS_Store
+mercury_bak

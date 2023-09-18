@@ -146,3 +146,37 @@ main
   HG_Context_destroy
   HG_Finalize
 ---------- bulk ----------
+HG_Forward
+  ...
+  hg_core_handle->ops.forward(hg_core_handle) -> hg_core_forward_na
+    na_ret = NA_Msg_send_unexpected(hg_core_handle->na_class,
+        hg_core_handle->na_context, hg_core_send_input_cb, hg_core_handle,
+        hg_core_handle->core_handle.in_buf, hg_core_handle->in_buf_used,
+        hg_core_handle->in_buf_plugin_data, hg_core_handle->na_addr,
+        hg_core_handle->core_handle.info.context_id, hg_core_handle->tag,
+        hg_core_handle->na_send_op_id);
+      ...
+      na_ofi_msg_send_unexpected(na_class_t *na_class -> na_ofi_msg_send
+        fi_senddata
+
+
+
+ucx_send:
+na_ucx_msg_send_unexpected,           /* msg_send_unexpected */
+  ucp_am_send_nbx
+
+
+
+na_ofi_check_protocol
+  na_ofi_provider_check
+    fi_getinfo
+
+
+na_ofi_initialize
+na_ofi_getinfo
+  fi_getinfo
+
+
+na_ofi_cq_read
+  fi_cq_read
+
