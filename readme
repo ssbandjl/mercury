@@ -180,3 +180,13 @@ na_ofi_getinfo
 na_ofi_cq_read
   fi_cq_read
 
+
+libfabric ofi plugs: static const struct na_class_ops *const na_plugin_static_g[]
+export OFI_INCLUDE_DIR=/home/xb/project/libfabric/libfabric/build/include
+export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
+
+
+
+
+
+
