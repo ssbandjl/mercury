@@ -6,3 +6,6 @@ cd build
 cmake ..
 make && make install
 
+cd ..
+cp mercury/05_bulk/*.sh build/bin/
+

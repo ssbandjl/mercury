@@ -1,2 +1,0 @@
-/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk/CMakeFiles/05_hg_client.dir
-/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk/CMakeFiles/05_hg_server.dir

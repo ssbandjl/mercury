@@ -1,5 +1,9 @@
-include_directories(/opt/daos/prereq/debug/mercury/lib/include)
-link_directories(/opt/daos/prereq/debug/mercury/lib)
+# include_directories(/opt/daos/prereq/debug/mercury/lib/include)
+# link_directories(/opt/daos/prereq/debug/mercury/lib)
+
+include_directories(/usr/local/include)
+# include_directories(/home/xb/project/mercury/mercury/05_bulk)
+link_directories(/usr/local/lib)
 
 set(CMAKE_C_FLAGS "-g3")
 
