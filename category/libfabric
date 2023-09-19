@@ -3,3 +3,9 @@ na_ofi_fabric_open
 prov_name = "tcp;ofi_rxm";
 
 
+libfabric默认安装即可:
+check_header: find_package(OFI 1.9 REQUIRED)
+
+
+
+

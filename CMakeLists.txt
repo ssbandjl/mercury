@@ -28,8 +28,8 @@ endif()
 
 project(MERCURY C)
 
-include_directories(/home/xb/project/libfabric/libfabric/build/include)
-link_directories(/home/xb/project/libfabric/libfabric/build/lib)
+# include_directories(/home/xb/project/libfabric/libfabric/build/include)
+# link_directories(/home/xb/project/libfabric/libfabric/build/lib)
 
 #------------------------------------------------------------------------------
 # Setup install and output Directories
