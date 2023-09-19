@@ -42,3 +42,10 @@ if(SNAPPY_FOUND)
   build_snappy_example(snappy_server)
 endif()
 
+
+#bulk
+add_executable(05_hg_server_bulk server.c)
+target_link_libraries(05_hg_server_bulk mercury)
+
+add_executable(05_hg_client_bulk client.c)
+target_link_libraries(05_hg_client_bulk mercury)

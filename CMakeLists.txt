@@ -172,7 +172,7 @@ endif()
 #------------------------------------------------------------------------------
 # Enable debug output.
 #------------------------------------------------------------------------------
-option(MERCURY_ENABLE_DEBUG "Enable debug statements." OFF)
+option(MERCURY_ENABLE_DEBUG "Enable debug statements." ON)
 if(MERCURY_ENABLE_DEBUG)
   set(HG_HAS_DEBUG 1)
 else()
@@ -371,7 +371,7 @@ endif()
 #-----------------------------------------------------------------------------
 # Examples
 #-----------------------------------------------------------------------------
-option(BUILD_EXAMPLES "Build examples." OFF)
+option(BUILD_EXAMPLES "Build examples." ON)
 if(BUILD_EXAMPLES)
   # Make sure MERCURY_USE_BOOST_PP is turned ON for examples.
   set(MERCURY_USE_BOOST_PP "ON" CACHE BOOL "Use BOOST preprocessor macros." FORCE)

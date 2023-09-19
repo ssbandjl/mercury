@@ -39,7 +39,7 @@ set(MERCURY_INT_PKG_EXPORTED_LIBS ${MERCURY_INT_PKG_EXPORTED_LIBS} na)
 # External dependencies
 #------------------------------------------------------------------------------
 # Boost (for preprocessor macros)
-option(MERCURY_USE_BOOST_PP "Use BOOST preprocessor macros." OFF)
+option(MERCURY_USE_BOOST_PP "Use BOOST preprocessor macros." ON)
 if(MERCURY_USE_BOOST_PP)
   option(MERCURY_USE_SYSTEM_BOOST "Use system-installed Boost libraries." OFF)
   if(MERCURY_USE_SYSTEM_BOOST)
