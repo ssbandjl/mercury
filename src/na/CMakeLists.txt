@@ -158,7 +158,7 @@ endif()
 # OFI
 option(NA_USE_OFI "Use libfabric plugin." ON)
 if(NA_USE_OFI)
-  find_package(OFI 1.9 REQUIRED)
+  # find_package(OFI 1.9 REQUIRED)
   message(STATUS "OFI include directory: ${OFI_INCLUDE_DIR}")
   set(NA_PLUGINS ${NA_PLUGINS} ofi)
   set(NA_HAS_OFI 1)

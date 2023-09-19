@@ -6,6 +6,9 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# include_directories(/home/xb/project/libfabric/libfabric/build/include)
+# link_directories(/home/xb/project/libfabric/libfabric/build/lib)
+
 #------------------------------------------------------------------------------
 # External dependencies
 #------------------------------------------------------------------------------
