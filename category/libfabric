@@ -1,0 +1,5 @@
+na_ofi_fabric_open
+
+prov_name = "tcp;ofi_rxm";
+
+
