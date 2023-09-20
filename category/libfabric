@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-20 17:12:38
+ * @LastEditTime: 2023-09-20 19:37:16
  * @FilePath: /mercury/category/libfabric
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -86,8 +86,10 @@ ret = prov->provider->getinfo(version, node, service, flags, hints, &cur); -> st
 ofi_set_prov_attr(tail->fabric_attr, prov->provider)
 
 
-fi_senddata
-int vrb_open_ep
+fi_senddata -> rxm_senddata
+  rxm_get_conn(rxm_ep, dest_addr, &rxm_conn)
+  
+int vrb_open_ep -> vrb_get_port_space -> return RDMA_PS_TCP
   int vrb_create_ep
     rdma_create_id
     rdma_resolve_addr -> TODO 也将此调用转换为非阻塞（使用事件通道）：在运行大型 MPI 作业时，这可能是为了更好地扩展所需要的。 使其成为非阻塞意味着我们无法在 EP 启用时创建 QP。 在使用 rdma_create_qp 创建 QP 之前，我们需要等待 RDMA_CM_EVENT_ADDR_RESOLVED 事件。 它还需要一个SW接收队列来存储启用EP后应用程序发布的recvs

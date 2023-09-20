@@ -33,7 +33,7 @@ int main(int argc, char** argv)
     const char* server_address = argv[1];
     printf("\033[1;32m server_address:%s\033[0m\n", server_address);
     server_state state; // Instance of the server's state
-    HG_Set_log_level("warning"); // warning|debug
+    HG_Set_log_level("debug"); // warning|debug
     state.hg_class = HG_Init(server_address, HG_TRUE); // server init
     assert(state.hg_class != NULL);
 

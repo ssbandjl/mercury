@@ -39,7 +39,7 @@ int main(int argc, char** argv)
     /* Local instance of the client_state. */
     client_state state;
     state.completed = 0;
-    HG_Set_log_level("warning"); // warning|debug
+    HG_Set_log_level("debug"); // warning|debug
     // Initialize an hg_class.
     state.hg_class = HG_Init(protocol, HG_FALSE);
     assert(state.hg_class != NULL);
