@@ -40,6 +40,29 @@ NA_Initialize_opt -> Initialize NA if not provided externally
       info.thread_mode = ((na_init_info.thread_mode & NA_THREAD_MODE_SINGLE)
       na_ofi_class = na_ofi_class_alloc();            
       ret = na_ofi_verify_info
+      na_ofi_class->msg_recv_unexpected == na_ofi_msg_recv
+      na_ofi_class->opt_features |= NA_OPT_MULTI_RECV
+      na_ofi_class->cq_poll = na_ofi_cq_poll_no_source
+      na_ofi_fabric_open(prov_type, na_ofi_class->fi_info->fabric_attr, &na_ofi_class->fabric)
+      na_ofi_domain_open(na_ofi_class->fabric, na_init_info.auth_key,
+        no_wait, na_ofi_prov_flags[prov_type] & NA_OFI_SEP,
+        na_ofi_prov_flags[prov_type] & NA_OFI_DOM_SHARED, na_ofi_class->fi_info,
+        &na_ofi_class->domain)
+      na_ofi_class->context_max = na_init_info.max_contexts
+      na_ofi_class->use_sep
+      na_ofi_endpoint_open(na_ofi_class->fabric, na_ofi_class->domain,
+        na_ofi_class->no_wait, na_ofi_class->use_sep, na_ofi_class->context_max,
+        na_init_info.max_unexpected_size, na_init_info.max_expected_size,
+        na_ofi_class->fi_info, &na_ofi_class->endpoint)
+      pool_chunk_size
+      na_ofi_class->send_pool = hg_mem_pool_create(pool_chunk_size
+      na_ofi_class->recv_pool = hg_mem_pool_create(pool_chunk_size
+      for (i = 0; i < NA_OFI_ADDR_POOL_COUNT; i++) -> 地址池
+        struct na_ofi_addr *na_ofi_addr = na_ofi_addr_alloc(na_ofi_class)
+        HG_QUEUE_PUSH_TAIL(&na_ofi_class->addr_pool.queue, na_ofi_addr, entry)      
+      ret = na_ofi_endpoint_get_src_addr(na_ofi_class)
+      
+
 
 
 
