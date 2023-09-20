@@ -1,3 +1,11 @@
+/*
+ * @Author: xb ssbandjl@163.com
+ * @Date: 2023-09-19 08:19:04
+ * @LastEditors: xb ssbandjl@163.com
+ * @LastEditTime: 2023-09-20 09:26:04
+ * @FilePath: /mercury/category/libfabric
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 na_ofi_fabric_open
 
 prov_name = "tcp;ofi_rxm";
@@ -18,13 +26,13 @@ NA_Initialize_opt -> Initialize NA if not provided externally
       FI_MAJOR(runtime_version), FI_MINOR(runtime_version)
       type = na_ofi_prov_name_to_type(protocol_name) -> static const char *const na_ofi_prov_name[] = {NA_OFI_PROV_TYPES} -> 网络配置,插件, 协议等
       na_ofi_getinfo(type, NULL, &providers)
-        // 设置网络参数
+        // 设置网络参数(提示信息,过滤提供者)
         hints = fi_allocinfo()
-        hints->mode = FI_ASYNC_IOV
-        hints->ep_attr->type = FI_EP_RDM
+        hints->mode = FI_ASYNC_IOV -> FI_ASYNC_IOV 模式指示应用程序必须提供 IO 向量所需的缓冲。 设置后，应用程序不得修改长度 > 1 的 IO 向量，包括任何相关的内存描述符数组，直到关联操作完成
+        hints->ep_attr->type = FI_EP_RDM -> 设置端点类型为: 可靠但是连接更少的数据报类型
         hints->caps = FI_MSG | FI_TAGGED | FI_RMA | FI_DIRECTED_RECV
-        hints->tx_attr->msg_order = FI_ORDER_SAS
-        hints->tx_attr->op_flags = FI_INJECT_COMPLETE
+        hints->tx_attr->msg_order = FI_ORDER_SAS -> msg_order：保证具有相同标签的消息是有序的。 （FI_ORDER_SAS - 发送后发送(send after send)。如果设置，消息发送操作（包括标记的发送）将按照相对于其他消息发送的提交顺序进行传输。如果未设置，则消息发送可能会不按其提交的顺序进行传输）
+        hints->tx_attr->op_flags = FI_INJECT_COMPLETE -> 当可以安全地重用缓冲区时生成完成事件
         hints->domain_attr->av_type = FI_AV_MAP
         hints->domain_attr->resource_mgmt = FI_RM_ENABLED
         hints->fabric_attr->prov_name = strdup(na_ofi_prov_name[prov_type]) -> 提供者: verbs;ofi_rxm
