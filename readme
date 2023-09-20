@@ -157,7 +157,10 @@ HG_Forward
         hg_core_handle->na_send_op_id);
       ...
       na_ofi_msg_send_unexpected(na_class_t *na_class -> na_ofi_msg_send
-        fi_senddata
+        rc = fi_senddata(ep, msg_info->buf.const_ptr, msg_info->buf_size,
+        msg_info->desc, msg_info->tag & NA_OFI_TAG_MASK, msg_info->fi_addr,
+        context);
+        
 
 
 
