@@ -31,6 +31,7 @@ int main(int argc, char** argv)
         exit(0);
     }
 
+    printf("\033[1;32m protocol:%s, server_addr:%s, file:%s \033[0m\n", argv[1], argv[2], argv[3]);
     hg_return_t ret;
 
     const char* protocol = argv[1];
@@ -38,7 +39,7 @@ int main(int argc, char** argv)
     /* Local instance of the client_state. */
     client_state state;
     state.completed = 0;
-    HG_Set_log_level("debug");
+    HG_Set_log_level("warning"); // warning|debug
     // Initialize an hg_class.
     state.hg_class = HG_Init(protocol, HG_FALSE);
     assert(state.hg_class != NULL);

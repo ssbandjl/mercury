@@ -31,19 +31,19 @@ int main(int argc, char** argv)
     }
 
     const char* server_address = argv[1];
-
+    printf("\033[1;32m server_address:%s\033[0m\n", server_address);
     server_state state; // Instance of the server's state
-    HG_Set_log_level("debug"); // warning|debug
+    HG_Set_log_level("warning"); // warning|debug
     state.hg_class = HG_Init(server_address, HG_TRUE); // server init
     assert(state.hg_class != NULL);
 
     /* Get the address of the server */
     char hostname[128];
-    hg_size_t hostname_size;
+    hg_size_t hostname_size = 128;
     hg_addr_t self_addr;
     HG_Addr_self(state.hg_class,&self_addr);  // Access self address
     HG_Addr_to_string(state.hg_class, hostname, &hostname_size, self_addr);
-    printf("Server running at address %s\n",hostname);
+    printf("\033[1;32m Server running at address %s \033[0m\n",hostname);
 
     state.hg_context = HG_Context_create(state.hg_class);
     assert(state.hg_context != NULL);
