@@ -1,3 +1,11 @@
+/*
+ * @Author: xb ssbandjl@163.com
+ * @Date: 2023-09-19 08:19:04
+ * @LastEditors: xb ssbandjl@163.com
+ * @LastEditTime: 2023-09-21 09:01:15
+ * @FilePath: /mercury/readme
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 https://github.com/ssbandjl/mercury.git
 https://github.com/mercury-hpc/mercury
 git fetch upstream
@@ -61,105 +69,7 @@ na_ret = na_perf_run
 ---------- test ----------
 
 
----------- bulk ----------
-bulk rdma收发文件
 
-mercury/05_bulk/client.c
-./client protocal server_addr filename
-main
-  HG_Set_log_level("debug")
-  state.hg_class = HG_Init(protocol, HG_FALSE)
-  state.hg_context = HG_Context_create(state.hg_class)
-  state.save_rpc_id = MERCURY_REGISTER(state.hg_class, "save", save_in_t, save_out_t, NULL)
-  access(save_op.filename, F_OK) 检查文件是否存在
-  HG_Addr_lookup1(state.hg_context, lookup_callback, &save_op, server_address, HG_OP_ID_IGNORE) -> 查地址, 然后回调
-  lookup_callback  
-    save_operation* save_op = (save_operation*)(callback_info->arg); 回调通过指针传递参数
-    FILE* file = fopen(save_op->filename,"r");
-    fseek(file, 0L, SEEK_END)
-    save_op->size = ftell(file) 计算文件位置
-    fseek(file, 0L, SEEK_SET);
-    save_op->buffer = calloc(1, save_op->size);
-    fread(save_op->buffer,1,save_op->size,file)  // fread和fwrite的用法详解（以数据块的形式读写文件）
-    HG_Create(state->hg_context, addr, state->save_rpc_id, &handle)
-    HG_Bulk_create(state->hg_class, 1, (void**) &(save_op->buffer), &(save_op->size), HG_BULK_READ_ONLY, &(save_op->bulk_handle));
-    HG_Bulk_create (void**) &(save_op->buffer) 传入文件内容buf指针地址（二级指针） -> 客户端创建BULK
-      hg_buld malloc/memset 0
-      hg_atomic_init32 ref_count 1 初始化引用计数
-      转分段 注册分段 hg_bulk_register_segments 最大静态段=8， HG_BULK_STATIC_MAX
-      hg_bulk_create_na_mem_descs 单独注册内存描述 individually 分为静态staic和动态数组dynamic
-        hg_bulk_register 注册段 传递索引i
-          NA_Mem_handle_create
-            mem_handler_create -> na_ofi_mem_handler_create
-              NA_UNUSED 编译参数 忽略编译告警
-              calloc
-              na_ofi_mem_desc s[0] 单段， d 多段
-              flags & 0xff 全1
-          NA_Mem_register
-            mem_register na_ofi_mem_register
-              requested_key 自增
-              NA_MEM_READ_ONLY 
-              access = FI_REMOTE_READ | FI_WRITE 远程读和本地写
-              fi_mr_regv 注册内存向量
-                rxm_mr_regv
-                  rxm_mr_get_msg_access
-                  fi_mr_regv
-                    vrb_mr_regv
-                      vrb_mr_cache_reg
-                        ofi_mr_rbt_find 如果有缓存就找红黑树
-                        util_mr_cache_create
-                        add_region
-                          vrb_mr_reg_common
-                            ibv_reg_mr 注册内存
-                            md->mr_fid.key = md->mr->rkey 远程键
-                            md->lkey = md->mr->lkey 本地键
-                            vrb_eq_write_event 写完成事件
-                  rxm_mr_init
-              fi_mr_key 取回内存key
-              ...desc.info.fi_mr_key = 远程键
-          NA_Mem_handle_get_serialize_size na_ofi_mem_handle_get_serialize_size
-            sizeof iovec info + iovcnt
-    HG_Forward -> 客户端调用RDMA的发送接口, 服务端调用 HG_Bulk_transfer HG_BULK_PULL 拉取数据
-    save_completed
-  while ... do -> 循环
-    ret = HG_Trigger(state.hg_context, 0, 1, &count)
-    HG_Progress(state.hg_context, 100)
-  ret = HG_Context_destroy(state.hg_context)
-  hg_return_t err = HG_Finalize(state.hg_class)
-
-----------
-
-server:
-mercury/05_bulk/server.c
-./server addr
-main
-  HG_Init
-  HG_Addr_self
-  HG_Addr_to_string
-  HG_Context_create
-  HG_Register_data
-  do
-    HG_Trigger
-    HG_Progress
-  save
-    HG_Bulk_transfer(stt->hg_context, save_bulk_completed, my_rpc_state, HG_BULK_PULL, info->addr, in.bulk_handle, 0, my_rpc_state->bulk_handle, 0, my_rpc_state->size, HG_OP_ID_IGNORE) origin and local 对齐 -> 服务端通过RDMA的单边读请求, 从客户端DMA拉取数据
-  HG_Context_destroy
-  HG_Finalize
----------- bulk ----------
-HG_Forward
-  ...
-  hg_core_handle->ops.forward(hg_core_handle) -> hg_core_forward_na
-    na_ret = NA_Msg_send_unexpected(hg_core_handle->na_class,
-        hg_core_handle->na_context, hg_core_send_input_cb, hg_core_handle,
-        hg_core_handle->core_handle.in_buf, hg_core_handle->in_buf_used,
-        hg_core_handle->in_buf_plugin_data, hg_core_handle->na_addr,
-        hg_core_handle->core_handle.info.context_id, hg_core_handle->tag,
-        hg_core_handle->na_send_op_id);
-      ...
-      na_ofi_msg_send_unexpected(na_class_t *na_class -> na_ofi_msg_send
-        rc = fi_senddata(ep, msg_info->buf.const_ptr, msg_info->buf_size,
-        msg_info->desc, msg_info->tag & NA_OFI_TAG_MASK, msg_info->fi_addr,
-        context);
         
 
 
