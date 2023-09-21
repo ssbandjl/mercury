@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-21 09:01:15
+ * @LastEditTime: 2023-09-21 13:34:31
  * @FilePath: /mercury/readme
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -100,6 +100,13 @@ export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
 
 
 
+
+
+
+HG_ALLOW_MULTI_PROGRESS, 防止多个线程进入 HG_Core_progress()，添加 HG_ALLOW_MULTI_PROGRESS 选项来控制行为，如果 HG_ALLOW_MULTI_PROGRESS 为 ON，则禁用 NA_HAS_MULTI_PROGRESS
+#ifdef HG_HAS_MULTI_PROGRESS
+hg_return_t
+HG_Core_progress(hg_core_context_t *context, unsigned int timeout_ms)
 
 
 

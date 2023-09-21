@@ -24,6 +24,7 @@ static hg_return_t save(hg_handle_t h);
 int main(int argc, char** argv)
 {
     hg_return_t ret;
+    char        *log_level;
 
     if(argc != 2) {
         printf("Usage: %s <server address>\n", argv[0]);
@@ -33,7 +34,11 @@ int main(int argc, char** argv)
     const char* server_address = argv[1];
     printf("\033[1;32m server_address:%s\033[0m\n", server_address);
     server_state state; // Instance of the server's state
-    HG_Set_log_level("debug"); // warning|debug
+    log_level = getenv("HG_LOG_LEVEL");
+    if(!log_level) {
+        log_level = "debug";
+    }
+    HG_Set_log_level(log_level); // warning|debug, #export HG_LOG_LEVEL=warn, getenv
     state.hg_class = HG_Init(server_address, HG_TRUE); // server init
     assert(state.hg_class != NULL);
 

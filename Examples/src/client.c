@@ -26,6 +26,8 @@ hg_return_t save_completed(const struct hg_cb_info *info);
 
 int main(int argc, char** argv)
 {
+    char        *log_level;
+
     if(argc != 4) {
         fprintf(stderr,"Usage: %s <protocol> <server address> <filename>\n", argv[0]);
         exit(0);
@@ -39,7 +41,11 @@ int main(int argc, char** argv)
     /* Local instance of the client_state. */
     client_state state;
     state.completed = 0;
-    HG_Set_log_level("debug"); // warning|debug
+    log_level = getenv("HG_LOG_LEVEL");
+    if(!log_level) {
+        log_level = "debug";
+    }
+    HG_Set_log_level(log_level); // warning|debug
     // Initialize an hg_class.
     state.hg_class = HG_Init(protocol, HG_FALSE);
     assert(state.hg_class != NULL);

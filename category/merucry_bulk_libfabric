@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-21 09:23:35
+ * @LastEditTime: 2023-09-21 19:58:01
  * @FilePath: /mercury/category/libfabric
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -191,8 +191,10 @@ fi_senddata -> rxm_senddata
   rxm_get_conn(rxm_ep, dest_addr, &rxm_conn)
     ...
     rxm_conn_progress(ep)
-      ret = fi_eq_read(ep->msg_eq, &event, &cm_entry -> do loop
-        ...
+      ret = fi_eq_read(ep->msg_eq, &event, &cm_entry -> do loop -> vrb_eq_read(struct fid_eq *eq_fid, uint32_t *event, void *buf, size_t len, uint64_t flags)
+        eq = container_of(eq_fid, struct vrb_eq, eq_fid.fid) -> 事件队列, 参考结构: struct vrb_eq {
+        ret = vrb_eq_read_event(eq, event, buf, len, flags)
+          if (dlistfd_empty(&eq->list_head)) -> 读eq队列
         rdma_get_cm_event(eq->channel, &cma_event);
         vrb_eq_cm_process_event(eq, cma_event, event, buf, len) -> VERBS模块, 从事件队列中处理CM事件
           RDMA_CM_EVENT_ROUTE_RESOLVED -> 客户端路由解析事件
@@ -309,7 +311,7 @@ ep->rma->writemsg(ep, msg, flags)
 vrb_msg_ep_rma_writemsg -> prov/verbs/src/verbs_rma.c
   struct ibv_send_wr wr
   wr.opcode = IBV_WR_RDMA_WRITE | wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM 写|立即数写
-  vrb_send_iov(ep, &wr, msg->msg_iov, msg->desc -> ssize_t vrb_send_iov
+  vrb_send_iov(ep, &wr, msg->msg_iov, msg->desc -> ssize_t vrb_send_iovli
     wr->sg_list = alloca(sizeof(*wr->sg_list) * count)
     wr->sg_list[i].addr = (uintptr_t) iov[i].iov_base
     wr->sg_list[i].length = iov[i].iov_len;
@@ -320,3 +322,74 @@ vrb_msg_ep_rma_writemsg -> prov/verbs/src/verbs_rma.c
       ibv_post_send(ep->ibv_qp, wr, &bad_wr)
 
 所有标签(Flags), include/rdma/fabric.h -> #define FI_MSG			(1ULL << 1) ...
+
+
+服务端执行bulk拉取
+HG_Bulk_transfer(hg_context_t *context
+  hg_bulk_transfer_na(hg_bulk_op_t op
+    case HG_BULK_PULL:
+      na_bulk_op = hg_bulk_na_get
+      na_ret = na_bulk_op(hg_bulk_op_id->na_class -> hg_bulk_na_get -> return NA_Get -> na_class->ops->get -> na_ofi_get(na_class_t *na_class
+        na_ofi_rma_common(NA_OFI_CLASS(na_class), context, NA_CB_GET,
+        callback, arg, fi_readmsg, "fi_readmsg", FI_COMPLETION,
+        (struct na_ofi_mem_handle *) local_mem_handle, local_offset,
+        (struct na_ofi_mem_handle *) remote_mem_handle, remote_offset, length,
+        (struct na_ofi_addr *) remote_addr, remote_id,
+        (struct na_ofi_op_id *) op_id) -> 服务端拉取数据(READ)
+        ..
+na_ofi_rma_common(struct na_ofi_class *na_ofi_class,
+  struct iovec *local_iov = NA_OFI_IOV
+  void *local_desc = fi_mr_desc(na_ofi_mem_handle_local->fi_mr)
+  na_ofi_iov_translate        
+  na_ofi_rma_iov_translate
+  na_ofi_rma_post(na_ofi_context->fi_tx, rma_info, &na_ofi_op_id->fi_ctx)
+    rc = rma_info->fi_rma_op -> rxm_ep_readmsg(struct fid_ep *ep_fid,
+      return rxm_ep_rma_common(rxm_ep, msg, flags | rxm_ep->util_ep.tx_msg_flags, fi_readmsg, FI_READ);
+        rxm_ep_rma_reg_iov(rxm_ep, msg_rma.msg_iov, msg_rma.desc, mr_desc, msg_rma.iov_count, comp_flags & (FI_WRITE | FI_READ), rma_buf)
+          fi_mr_desc(((struct rxm_mr *) desc[i])->msg_mr)
+          rma_msg(rxm_conn->msg_ep, &msg_rma, flags) -> vrb_msg_ep_rma_readmsg(struct fid_ep *ep_fid
+            struct ibv_send_wr wr = {
+              .wr_id = VERBS_COMP_READ_FLAGS(ep, flags, (uintptr_t)msg->context),
+              .opcode = IBV_WR_RDMA_READ,
+              .wr.rdma.remote_addr = msg->rma_iov->addr,
+              .wr.rdma.rkey = (uint32_t)msg->rma_iov->key,
+              .num_sge = msg->iov_count,
+            };
+            vrb_post_send(ep, &wr, 0)
+              vrb_flush_cq(cq)
+              ep->sq_credits--
+              ctx->op_queue = VRB_OP_SQ
+              ret = ibv_post_send(ep->ibv_qp, wr, &bad_wr) -> 提交WR,将客户端数据读过来(DMA)
+              wr->wr_id = (uintptr_t) ctx->user_ctx
+              slist_insert_tail(&ctx->entry, &ep->sq_list) -> 触发 vrb_flush_sq 遍历该发送队列 -> while (!slist_empty(&ep->sq_list))
+
+
+下刷发送队列
+(gdb) bt
+#0  vrb_flush_sq (ep=0xb7a4d0) at prov/verbs/src/verbs_ep.c:456
+#1  0x00007ffff7339f90 in vrb_ep_close (fid=0xb7a4d0) at prov/verbs/src/verbs_ep.c:582
+#2  0x00007ffff7349804 in fi_close (fid=0xb7a4d0) at ./include/rdma/fabric.h:631
+#3  0x00007ffff734a605 in rxm_close_conn (conn=0xb756b8) at prov/rxm/src/rxm_conn.c:88
+#4  0x00007ffff734cd88 in rxm_process_shutdown (conn=0xb756b8) at prov/rxm/src/rxm_conn.c:768
+#5  0x00007ffff734d170 in rxm_handle_event (ep=0x78b570, event=3, cm_entry=0x7fffffffd3d0, len=16) at prov/rxm/src/rxm_conn.c:830
+#6  0x00007ffff734d279 in rxm_conn_progress (ep=0x78b570) at prov/rxm/src/rxm_conn.c:850
+#7  0x00007ffff736256e in rxm_ep_do_progress (util_ep=0x78b570) at prov/rxm/src/rxm_cq.c:1843
+#8  0x00007ffff736268a in rxm_ep_progress (util_ep=0x78b570) at prov/rxm/src/rxm_cq.c:1863
+#9  0x00007ffff72d5b7d in ofi_cq_progress (cq=0x787770) at prov/util/src/util_cq.c:498
+#10 0x00007ffff72d51c0 in ofi_cq_readfrom (cq_fid=0x787770, buf=0x0, count=0, src_addr=0x0) at prov/util/src/util_cq.c:257
+#11 0x00007ffff72d3a56 in fi_cq_readfrom (cq=0x787770, buf=0x0, count=0, src_addr=0x0) at ./include/rdma/fi_eq.h:400
+#12 0x00007ffff72d5207 in ofi_cq_read (cq_fid=0x787770, buf=0x0, count=0) at prov/util/src/util_cq.c:264
+#13 0x00007ffff72dbf4f in fi_cq_read (cq=0x787770, buf=0x0, count=0) at ./include/rdma/fi_eq.h:394
+#14 0x00007ffff72dc4cc in util_poll_run (poll_fid=0x783390, context=0x7fffffffdb78, count=1) at prov/util/src/util_poll.c:95
+#15 0x00007ffff72dc9a0 in fi_poll (pollset=0x783390, context=0x7fffffffdb78, count=1) at ./include/rdma/fi_eq.h:335
+#16 0x00007ffff72de0bf in util_wait_fd_try (wait=0x783290) at prov/util/src/util_wait.c:366
+#17 0x00007ffff72dd456 in ofi_trywait (fabric=0x781b40, fids=0x7fffffffdc40, count=1) at prov/util/src/util_wait.c:72
+#18 0x00000000004266de in fi_trywait (count=1, fids=0x7fffffffdc40, fabric=<optimized out>) at /usr/local/include/rdma/fi_eq.h:323
+#19 na_ofi_poll_try_wait (na_class=<optimized out>, context=<optimized out>) at /home/xb/project/mercury/src/na/na_ofi.c:8229
+#20 0x0000000000417b4a in hg_core_poll_try_wait (context=0x786c80) at /home/xb/project/mercury/src/mercury_core.c:5058
+#21 hg_core_progress (context=context@entry=0x786c80, timeout_ms=100) at /home/xb/project/mercury/src/mercury_core.c:5001
+#22 0x000000000042043e in HG_Core_progress (context=0x786c80, timeout_ms=timeout_ms@entry=100) at /home/xb/project/mercury/src/mercury_core.c:6530
+#23 0x000000000040bf02 in HG_Progress (context=<optimized out>, timeout=timeout@entry=100) at /home/xb/project/mercury/src/mercury.c:2178
+#24 0x0000000000407741 in main (argc=<optimized out>, argv=<optimized out>) at /home/xb/project/mercury/Examples/src/server.c:69              
+
+
