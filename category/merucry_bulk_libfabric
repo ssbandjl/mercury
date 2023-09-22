@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-21 19:58:01
+ * @LastEditTime: 2023-09-21 20:03:09
  * @FilePath: /mercury/category/libfabric
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -199,7 +199,7 @@ fi_senddata -> rxm_senddata
         vrb_eq_cm_process_event(eq, cma_event, event, buf, len) -> VERBS模块, 从事件队列中处理CM事件
           RDMA_CM_EVENT_ROUTE_RESOLVED -> 客户端路由解析事件
           ep->state = VRB_CONNECTING
-          rdma_connect(ep->id, &ep->conn_param)
+          rdma_connect(ep->id, &ep->conn_param) -> 主动发起连接请求(建连) -> int rdma_connect (struct rdma_cm_id *id, struct rdma_conn_param *conn_param) -> 
           rdma_ack_cm_event(cma_event)
       rxm_handle_event(ep, event, &cm_entry, ret)
         rxm_process_connect(cm_entry)
