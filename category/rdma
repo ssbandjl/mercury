@@ -1,13 +1,13 @@
 server:
 rdma_create_event_channel <- vrb_eq_open <- fi_eq_open
-rdma_create_id <- vrb_create_ep <- vrb_open_ep <- fi_endpoint
-rdma_listen -> fi_listen -> .listen = vrb_pep_listen -> vrb_pep_listen -> rdma_listen
+rdma_create_id <- vrb_create_ep <- vrb_open_ep <- fi_endpoint, librdmacm/cma.c -> rdma_create_event_channel HG创建端点
+rdma_listen -> fi_listen -> .listen = vrb_pep_listen -> vrb_pep_listen -> rdma_listen, na_ofi_basic_ep_open -> fi_enable -> rxm_ep_ctrl -> rxm_start_listen -> fi_listen
 
 client:
 rdma_create_event_channel
 rdma_create_id
-rdma_resolve_addr -> RDMA_CM_EVENT_ADDRESS_RESOLVED ->  rxm_open_conn -> fi_endpoint (vrb_open_ep) -> rdma_resolve_addr
-rdma_resolve_route -> RDMA_CM_EVENT_ROUTE_RESOLVED -> rxm_send_connect -> fi_connect -> rdma_resolve_route
+rdma_resolve_addr -> RDMA_CM_EVENT_ADDRESS_RESOLVED ->  rxm_open_conn -> fi_endpoint (vrb_open_ep) -> rdma_resolve_addr HG -> HG_Trigger -> hg_op_id->callback(&hg_cb_info) 查询地址设置的回调 lookup_callback ->  HG_Forward -> NA_Msg_send_unexpected -> fi_senddata -> rxm_get_conn -> fi_endpoint -> vrb_open_ep -> vrb_create_ep -> rdma_resolve_addr
+rdma_resolve_route -> RDMA_CM_EVENT_ROUTE_RESOLVED -> rxm_send_connect -> fi_connect -> rdma_resolve_route 也是HG发送的时候建立连接
 ------------------ 
 分配RDMA结构
 ibv_query_device <- fi_getinfo -> vrb_getinfo -> ibv_query_device
