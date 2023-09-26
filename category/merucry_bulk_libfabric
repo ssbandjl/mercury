@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-21 20:03:09
+ * @LastEditTime: 2023-09-25 10:19:04
  * @FilePath: /mercury/category/libfabric
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -391,5 +391,73 @@ na_ofi_rma_common(struct na_ofi_class *na_ofi_class,
 #22 0x000000000042043e in HG_Core_progress (context=0x786c80, timeout_ms=timeout_ms@entry=100) at /home/xb/project/mercury/src/mercury_core.c:6530
 #23 0x000000000040bf02 in HG_Progress (context=<optimized out>, timeout=timeout@entry=100) at /home/xb/project/mercury/src/mercury.c:2178
 #24 0x0000000000407741 in main (argc=<optimized out>, argv=<optimized out>) at /home/xb/project/mercury/Examples/src/server.c:69              
+
+
+
+
+
+#0  0x00007ffff6c966d0 in rdma_create_event_channel () from /lib64/librdmacm.so.1
+#1  0x00007ffff6c967c5 in ucma_alloc_id () from /lib64/librdmacm.so.1
+#2  0x00007ffff6c96821 in rdma_create_id2.part.20 () from /lib64/librdmacm.so.1
+#3  0x00007ffff6c96476 in ucma_init () from /lib64/librdmacm.so.1
+#4  0x00007ffff6c9697a in rdma_create_id () from /lib64/librdmacm.so.1
+#5  0x00007ffff7334ebe in vrb_ifa_rdma_info (ifa=0x6784b0, dev_name=0x7fffffffd428, rai=0x7fffffffd420) at prov/verbs/src/verbs_info.c:955
+#6  0x00007ffff73359e6 in vrb_getifaddrs (verbs_devs=0x7ffff776aaa0 <verbs_devs>) at prov/verbs/src/verbs_info.c:1177
+#7  0x00007ffff7336048 in vrb_init_info (all_infos=0x7ffff776a5e8 <vrb_util_prov+8>) at prov/verbs/src/verbs_info.c:1378
+#8  0x00007ffff73379c9 in vrb_getinfo (version=65549, node=0x0, service=0x0, flags=576460752303423488, hints=0x66a4c0, info=0x7fffffffd600) at prov/verbs/src/verbs_info.c:1872
+#9  0x00007ffff729730c in fi_getinfo_ (version=65549, node=0x0, service=0x0, flags=576460752303423488, hints=0x66a4c0, info=0x7fffffffd750) at src/fabric.c:1282
+#10 0x00007ffff72c70c0 in ofi_get_core_info (version=65549, node=0x0, service=0x0, flags=0, util_prov=0x7ffff776b960 <rxm_util_prov>, util_hints=0x6681e0, base_attr=0x7ffff776b8e0 <rxm_verbs_info>, info_to_core=0x7ffff73448f8 <rxm_info_to_core>, core_info=0x7fffffffd750)
+    at prov/util/src/util_attr.c:305
+#11 0x00007ffff72c71da in ofix_getinfo (version=65549, node=0x0, service=0x0, flags=0, util_prov=0x7ffff776b960 <rxm_util_prov>, hints=0x6681e0, info_to_core=0x7ffff73448f8 <rxm_info_to_core>, info_to_util=0x7ffff7344ff7 <rxm_info_to_rxm>, info=0x7fffffffd8c0)
+    at prov/util/src/util_attr.c:328
+#12 0x00007ffff7345d68 in rxm_getinfo (version=65549, node=0x0, service=0x0, flags=0, hints=0x6681e0, info=0x7fffffffd8c0) at prov/rxm/src/rxm_init.c:557
+#13 0x00007ffff729730c in fi_getinfo_ (version=65549, node=0x0, service=0x0, flags=0, hints=0x6681e0, info=0x7fffffffd9c0) at src/fabric.c:1282
+#14 0x000000000042a22f in na_ofi_getinfo (prov_type=prov_type@entry=NA_OFI_PROV_VERBS_RXM, info=info@entry=0x0, fi_info_p=fi_info_p@entry=0x7fffffffd9c0) at /home/xb/project/mercury/src/na/na_ofi.c:3247
+#15 0x00000000004313ee in na_ofi_check_protocol (protocol_name=protocol_name@entry=0x6681a0 "verbs;ofi_rxm") at /home/xb/project/mercury/src/na/na_ofi.c:6679
+#16 0x00000000004225ce in na_plugin_check_protocol (class_ops=0x44a2e0 <na_plugin_static_g>, ops_p=<synthetic pointer>, protocol_name=<optimized out>, class_name=0x668180 "ofi") at /home/xb/project/mercury/src/na/na.c:451
+#17 NA_Initialize_opt2 (info_string=info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", listen=<optimized out>, version=version@entry=262144, na_init_info=na_init_info@entry=0x7fffffffdaf0) at /home/xb/project/mercury/src/na/na.c:776
+#18 0x00000000004229d1 in NA_Initialize_opt (info_string=info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", listen=<optimized out>, na_init_info=na_init_info@entry=0x7fffffffdaf0) at /home/xb/project/mercury/src/na/na.c:734
+#19 0x0000000000413378 in hg_core_init (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info_p=hg_init_info_p@entry=0x0, class_p=class_p@entry=0x7fffffffdcb8)
+    at /home/xb/project/mercury/src/mercury_core.c:1225
+#20 0x000000000041bce1 in HG_Core_init_opt2 (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info=hg_init_info@entry=0x0)
+    at /home/xb/project/mercury/src/mercury_core.c:5620
+#21 0x000000000040967f in HG_Init_opt2 (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info_p=hg_init_info_p@entry=0x0) at /home/xb/project/mercury/src/mercury.c:1100
+#22 0x000000000040987d in HG_Init (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://175.16.53.61:55555", na_listen=na_listen@entry=1 '\001') at /home/xb/project/mercury/src/mercury.c:1041
+#23 0x0000000000407681 in main (argc=<optimized out>, argv=<optimized out>) at /home/xb/project/mercury/Examples/src/server.c:42
+
+
+vrb_getifaddrs
+  vrb_ifa_rdma_info
+    rdma_getaddrinfo
+    rdma_bind_addr
+    *dev_name = strdup(ibv_get_device_name(id->verbs->device))
+
+
+
+
+#0  0x00007ffff6c966d0 in rdma_create_event_channel () from /lib64/librdmacm.so.1
+#1  0x00007ffff6c967c5 in ucma_alloc_id () from /lib64/librdmacm.so.1
+#2  0x00007ffff6c96821 in rdma_create_id2.part.20 () from /lib64/librdmacm.so.1
+#3  0x00007ffff7320cc0 in vrb_get_rai_id (node=0x0, service=0x0, flags=576460752303423488, hints=0x787fd0, rai=0x7fffffffd4c8, id=0x7fffffffd4c0) at prov/verbs/src/verbs_init.c:278
+#4  0x00007ffff733745a in vrb_handle_sock_addr (node=0x0, service=0x0, flags=576460752303423488, hints=0x787fd0, info=0x7fffffffd650) at prov/verbs/src/verbs_info.c:1770
+#5  0x00007ffff733764c in vrb_get_match_infos (version=65549, node=0x0, service=0x0, flags=576460752303423488, hints=0x787fd0, raw_info=0x7ffff776a5e8 <vrb_util_prov+8>, info=0x7fffffffd650) at prov/verbs/src/verbs_info.c:1805
+#6  0x00007ffff7337a01 in vrb_getinfo (version=65549, node=0x0, service=0x0, flags=576460752303423488, hints=0x787fd0, info=0x7fffffffd650) at prov/verbs/src/verbs_info.c:1876
+#7  0x00007ffff729730c in fi_getinfo_ (version=65549, node=0x0, service=0x0, flags=576460752303423488, hints=0x787fd0, info=0x78b700) at src/fabric.c:1282
+#8  0x00007ffff72c70c0 in ofi_get_core_info (version=65549, node=0x0, service=0x0, flags=0, util_prov=0x7ffff776b960 <rxm_util_prov>, util_hints=0x784540, base_attr=0x0, info_to_core=0x7ffff73448f8 <rxm_info_to_core>, core_info=0x78b700) at prov/util/src/util_attr.c:305
+#9  0x00007ffff7353f15 in rxm_open_core_res (ep=0x78b560) at prov/rxm/src/rxm_ep.c:1748
+#10 0x00007ffff73545b3 in rxm_endpoint (domain=0x788450, info=0x6683b0, ep_fid=0x670ad0, context=0x0) at prov/rxm/src/rxm_ep.c:1925
+#11 0x0000000000434563 in fi_endpoint (context=0x0, ep=0x670ad0, info=0x6683b0, domain=<optimized out>) at /usr/local/include/rdma/fi_endpoint.h:178
+#12 na_ofi_basic_ep_open (na_ofi_endpoint=0x670ad0, no_wait=false, fi_info=0x6683b0, na_ofi_domain=0x780ca0, na_ofi_fabric=0x7836b0) at /home/xb/project/mercury/src/na/na_ofi.c:4385
+#13 na_ofi_endpoint_open (na_ofi_endpoint_p=0x66a4f0, fi_info=0x6683b0, expected_msg_size_max=0, unexpected_msg_size_max=0, max_contexts=<optimized out>, sep=false, no_wait=false, na_ofi_domain=0x780ca0, na_ofi_fabric=0x7836b0) at /home/xb/project/mercury/src/na/na_ofi.c:4357
+#14 na_ofi_initialize (na_class=<optimized out>, na_info=<optimized out>, listen=<optimized out>) at /home/xb/project/mercury/src/na/na_ofi.c:6867
+#15 0x00000000004227cb in NA_Initialize_opt2 (info_string=info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", listen=<optimized out>, version=version@entry=262144, na_init_info=na_init_info@entry=0x7fffffffdaf0) at /home/xb/project/mercury/src/na/na.c:819
+#16 0x00000000004229d1 in NA_Initialize_opt (info_string=info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", listen=<optimized out>, na_init_info=na_init_info@entry=0x7fffffffdaf0) at /home/xb/project/mercury/src/na/na.c:734
+#17 0x0000000000413378 in hg_core_init (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info_p=hg_init_info_p@entry=0x0, class_p=class_p@entry=0x7fffffffdcb8)
+    at /home/xb/project/mercury/src/mercury_core.c:1225
+#18 0x000000000041bce1 in HG_Core_init_opt2 (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info=hg_init_info@entry=0x0)
+    at /home/xb/project/mercury/src/mercury_core.c:5620
+#19 0x000000000040967f in HG_Init_opt2 (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", na_listen=na_listen@entry=1 '\001', version=version@entry=0, hg_init_info_p=hg_init_info_p@entry=0x0) at /home/xb/project/mercury/src/mercury.c:1100
+#20 0x000000000040987d in HG_Init (na_info_string=na_info_string@entry=0x7fffffffe1db "ofi+verbs;ofi_rxm://172.17.29.63:55555", na_listen=na_listen@entry=1 '\001') at /home/xb/project/mercury/src/mercury.c:1041
+#21 0x0000000000407681 in main (argc=<optimized out>, argv=<optimized out>) at /home/xb/project/mercury/Examples/src/server.c:42
 
 
