@@ -2,7 +2,7 @@
  * @Author: xb ssbandjl@163.com
  * @Date: 2023-09-19 08:19:04
  * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-26 16:27:47
+ * @LastEditTime: 2023-10-05 10:02:16
  * @FilePath: /mercury/category/libfabric
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -186,7 +186,7 @@ ret = prov->provider->getinfo(version, node, service, flags, hints, &cur); -> st
   rxm_alter_info(hints, *info)
 ofi_set_prov_attr(tail->fabric_attr, prov->provider)
 
-
+发送数据
 fi_senddata -> rxm_senddata
   rxm_get_conn(rxm_ep, dest_addr, &rxm_conn)
     ...
@@ -364,7 +364,7 @@ na_ofi_rma_common(struct na_ofi_class *na_ofi_class,
               slist_insert_tail(&ctx->entry, &ep->sq_list) -> 触发 vrb_flush_sq 遍历该发送队列 -> while (!slist_empty(&ep->sq_list))
 
 
-下刷发送队列
+下刷发送队列调用栈
 (gdb) bt
 #0  vrb_flush_sq (ep=0xb7a4d0) at prov/verbs/src/verbs_ep.c:456
 #1  0x00007ffff7339f90 in vrb_ep_close (fid=0xb7a4d0) at prov/verbs/src/verbs_ep.c:582
@@ -395,7 +395,7 @@ na_ofi_rma_common(struct na_ofi_class *na_ofi_class,
 
 
 
-
+创建RDMA事件通道调用栈
 #0  0x00007ffff6c966d0 in rdma_create_event_channel () from /lib64/librdmacm.so.1
 #1  0x00007ffff6c967c5 in ucma_alloc_id () from /lib64/librdmacm.so.1
 #2  0x00007ffff6c96821 in rdma_create_id2.part.20 () from /lib64/librdmacm.so.1
@@ -464,7 +464,7 @@ vrb_getifaddrs
 
 
 
-rdma_listen:
+rdma_listen: 服务端RDMA监听, 调用栈
 #0  0x00007ffff6c95dd0 in rdma_listen () from /lib64/librdmacm.so.1
 #1  0x00007ffff7324566 in vrb_pep_listen (pep_fid=0x783dd0) at prov/verbs/src/verbs_cm.c:535
 #2  0x00007ffff7349ea9 in fi_listen (pep=0x783dd0) at ./include/rdma/fi_cm.h:91
@@ -486,7 +486,7 @@ rdma_listen:
 
 
 
-(gdb) bt
+(gdb) 发送端解析地址调用栈
 #0  0x00007ffff6c97780 in rdma_resolve_addr () from /lib64/librdmacm.so.1
 #1  0x00007ffff73211be in vrb_create_ep (ep=0xa42010, ps=RDMA_PS_TCP, id=0xa42200) at prov/verbs/src/verbs_init.c:346
 #2  0x00007ffff733c492 in vrb_open_ep (domain=0x783730, info=0x793e00, ep_fid=0x7fffffffd790, context=0xa3ccb8) at prov/verbs/src/verbs_ep.c:1210
