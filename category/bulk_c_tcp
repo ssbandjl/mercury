@@ -1,0 +1,38 @@
+send
+...
+na_ofi_msg_send -> fi_senddata
+xnet_rdm_senddata(struct fid_ep *ep_fid, const void *buf, size_t len,
+ret = xnet_get_conn(rdm, dest_addr, &conn)
+  *conn = xnet_add_conn(rdm, *peer)
+  ret = xnet_rdm_connect(*conn)
+    ret = xnet_open_conn(conn, info)
+      ret = xnet_endpoint(&conn->rdm->util_ep.domain->domain_fid, info
+        ofi_endpoint_init
+        ofi_bsock_init
+        ep->bsock.sock = ofi_socket(ofi_get_sa_family(info), SOCK_STREAM, 0)
+        ret = xnet_setup_socket(ep->bsock.sock, info)
+        xnet_set_zerocopy(ep->bsock.sock)
+        bind(ep->bsock.sock, info->src_addr
+        dlist_init(&ep->unexp_entry);
+        slist_init(&ep->rx_queue);
+        slist_init(&ep->tx_queue);
+        slist_init(&ep->priority_queue);
+        slist_init(&ep->rma_read_queue);
+        slist_init(&ep->need_ack_queue);
+        slist_init(&ep->async_queue);
+        *ep_fid = &ep->util_ep.ep_fid;
+        (*ep_fid)->fid.ops = &xnet_ep_fi_ops;
+        (*ep_fid)->ops = &xnet_ep_ops;
+        (*ep_fid)->cm = &xnet_cm_ops;
+        (*ep_fid)->msg = &xnet_msg_ops;
+        (*ep_fid)->rma = &xnet_rma_ops;
+        (*ep_fid)->tagged = &xnet_tagged_ops;
+      ret = xnet_bind_conn(conn->rdm, conn->ep)
+      ret = fi_enable(&conn->ep->util_ep.ep_fid) -> static int xnet_ep_ctrl
+  static int xnet_rdm_connect
+    xnet_open_conn
+    msg.port = htons(ofi_addr_get_port(&conn->rdm->addr.sa))
+    ret = fi_connect(&conn->ep->util_ep.ep_fid, info->dest_addr -> static int xnet_ep_connect
+      ret = ofi_bsock_connect(&ep->bsock, ep->addr -> ofi_sockapi_connect_socket
+        ret = connect(sock, addr, addrlen) -> 客户端连接服务端
+
