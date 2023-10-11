@@ -3,6 +3,8 @@ rdma_create_event_channel <- vrb_eq_open <- fi_eq_open
 rdma_create_id <- vrb_create_ep <- vrb_open_ep <- fi_endpoint, librdmacm/cma.c -> rdma_create_event_channel HG创建端点 na_ofi_basic_ep_open
 rdma_listen -> fi_listen -> .listen = vrb_pep_listen -> vrb_pep_listen -> rdma_listen, na_ofi_basic_ep_open -> fi_enable -> rxm_ep_ctrl -> rxm_start_listen -> fi_listen
 
+if (ofi_epoll_add(_eq->epollfd, _eq->channel->fd, OFI_EPOLL_IN, NULL)) -> 将rdma事件通道的fd关联到eq的epollfd
+
 client:客户端创建事件通道,创建通信标识ID, 解析服务端地址, 发送数据时, 获取连接, 解析路由
 rdma_create_event_channel
 rdma_create_id
