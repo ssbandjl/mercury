@@ -1,11 +1,3 @@
-/*
- * @Author: xb ssbandjl@163.com
- * @Date: 2023-09-19 08:19:04
- * @LastEditors: xb ssbandjl@163.com
- * @LastEditTime: 2023-09-21 13:34:31
- * @FilePath: /mercury/readme
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
 https://github.com/ssbandjl/mercury.git
 https://github.com/mercury-hpc/mercury
 git fetch upstream
@@ -109,4 +101,18 @@ hg_return_t
 HG_Core_progress(hg_core_context_t *context, unsigned int timeout_ms)
 
 
+
+HG_Bulk_bind_transfer -> 绑定BULK传输
+    HG_CHECK_SUBSYS_ERROR(bulk, hg_bulk_origin == NULL, error, ret -> goto error 宏
+    hg_bulk_transfer
+        if (hg_bulk_op_pool) 
+            hg_bulk_op_pool_get -> 从内存池获取
+                do
+                hg_thread_spin_lock(&hg_bulk_op_pool->pending_list_lock)
+                if ((hg_bulk_op_id = HG_LIST_FIRST(&hg_bulk_op_pool->pending_list))) -> 获取到1个后退出
+                否则, 只允许一个线程扩容
+                for (i = 0; i < hg_bulk_op_pool->count; i++)
+                    hg_bulk_op_create(hg_bulk_op_pool->core_context, &new_op_id)
+                hg_thread_cond_broadcast(&hg_bulk_op_pool->extend_cond) -> 扩容后通知其他等待的线程
+        else hg_bulk_op_create
 
