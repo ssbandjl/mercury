@@ -4,6 +4,10 @@ git fetch upstream
 git merge upstream/master
 
 
+术语:
+Bidirectional communication 双向通信
+
+
 
 UCX 插件也可用作 libfabric 不可用或不建议使用的平台上的替代传输，当前支持的协议是 tcp 和动词, MPI 和 BMI (tcp) 插件仍然受支持，但逐渐被弃用，因此只能用作后备方法。 CCI 插件已弃用且不再受支持, 编译和运行 Mercury 需要各种软件包的最新版本。 请注意，使用这些软件包的过旧版本可能会导致很难追踪的间接错误, 
 
@@ -123,13 +127,38 @@ static const char *const hg_return_name[] = {HG_RETURN_VALUES};
 typedef enum hg_return { HG_RETURN_VALUES } hg_return_t;
 #undef X
 
+网络抽象层帮助信息:
+na_test_usage(const char *execname)
+
 
 ut 单元测试: Testing/unit/hg/CMakeLists.txt
 Testing/unit/hg/test_bulk.c -> main(int argc, char *argv[])
     hg_ret = hg_unit_init(argc, argv, false, &info);
         ret = HG_Test_init(argc, argv, &info->hg_test_info)
+            HG_Set_log_subsys("hg,hg_test")
+            hg_test_parse_options(argc, argv, hg_test_info)
+            NA_Test_init(argc, argv, &hg_test_info->na_test_info)
+                na_test_parse_options(argc, argv, na_test_info)
+                na_test_gen_config
+                    sprintf(info_string_ptr, "%s://", na_test_info->protocol) -> 拼接协议/域
+                NA_Initialize_opt2(info_string
+                na_test_self_addr_publish
+                na_test_get_config -> 读取之前设置的配置文件
+            HG_Init_opt2
+            hg_test_self_addr_publish
+            NA_Test_barrier
+            or MPI_Barrier
         info->buf_size_max -> 1MB
         ret = HG_Class_set_data(info->hg_class, info, NULL)
         HG_Class_set_handle_create_callback hg_test_handle_create_cb
+        info->context = HG_Context_create(info->hg_class)
+        info->request_class = hg_request_init hg_test_request_progress hg_test_request_trigger
+        HG_Context_set_data(info->context, context_info, free)
+        hg_test_register(info->hg_class)
+            hg_test_bulk_write_id_g = MERCURY_REGISTER(hg_class, "hg_test_bulk_write", bulk_write_in_t, bulk_write_out_t, hg_test_bulk_write_cb)
+        hg_thread_pool_init
+            for (i = 0; i < thread_count; i++)
+                hg_thread_create(&priv_pool->threads[i], hg_thread_pool_worker, (void *) priv_pool)
+                    pthread_create | win32 CreateThread
     HG_TEST_CHECK_HG_ERROR
 
