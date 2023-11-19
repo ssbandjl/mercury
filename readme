@@ -116,3 +116,20 @@ HG_Bulk_bind_transfer -> 绑定BULK传输
                 hg_thread_cond_broadcast(&hg_bulk_op_pool->extend_cond) -> 扩容后通知其他等待的线程
         else hg_bulk_op_create
 
+
+返回码, 错误码转换
+static const char *const hg_return_name[] = {HG_RETURN_VALUES};
+#define X(a) a,
+typedef enum hg_return { HG_RETURN_VALUES } hg_return_t;
+#undef X
+
+
+ut 单元测试: Testing/unit/hg/CMakeLists.txt
+Testing/unit/hg/test_bulk.c -> main(int argc, char *argv[])
+    hg_ret = hg_unit_init(argc, argv, false, &info);
+        ret = HG_Test_init(argc, argv, &info->hg_test_info)
+        info->buf_size_max -> 1MB
+        ret = HG_Class_set_data(info->hg_class, info, NULL)
+        HG_Class_set_handle_create_callback hg_test_handle_create_cb
+    HG_TEST_CHECK_HG_ERROR
+
