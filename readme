@@ -90,9 +90,69 @@ na_ofi_cq_read
   fi_cq_read
 
 
+网络插件以及需要实现的接口:
 libfabric ofi plugs: static const struct na_class_ops *const na_plugin_static_g[]
 export OFI_INCLUDE_DIR=/home/xb/project/libfabric/libfabric/build/include
 export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
+
+抽象网络类函数操作表:
+NA_PLUGIN const struct na_class_ops NA_PLUGIN_OPS(ofi) = {
+    NA_OFI_CLASS_NAME,                     /* name */
+    na_ofi_get_protocol_info,              /* get_protocol_info */
+    na_ofi_check_protocol,                 /* check_protocol */
+    na_ofi_initialize,                     /* initialize */
+    na_ofi_finalize,                       /* finalize */
+    NULL,                                  /* cleanup */
+    na_ofi_has_opt_feature,                /* has_opt_feature */
+    na_ofi_context_create,                 /* context_create */
+    na_ofi_context_destroy,                /* context_destroy */
+    na_ofi_op_create,                      /* op_create */
+    na_ofi_op_destroy,                     /* op_destroy */
+    na_ofi_addr_lookup,                    /* addr_lookup */
+    na_ofi_addr_free,                      /* addr_free */
+    na_ofi_addr_set_remove,                /* addr_set_remove */
+    na_ofi_addr_self,                      /* addr_self */
+    na_ofi_addr_dup,                       /* addr_dup */
+    na_ofi_addr_cmp,                       /* addr_cmp */
+    na_ofi_addr_is_self,                   /* addr_is_self */
+    na_ofi_addr_to_string,                 /* addr_to_string */
+    na_ofi_addr_get_serialize_size,        /* addr_get_serialize_size */
+    na_ofi_addr_serialize,                 /* addr_serialize */
+    na_ofi_addr_deserialize,               /* addr_deserialize */
+    na_ofi_msg_get_max_unexpected_size,    /* msg_get_max_unexpected_size */
+    na_ofi_msg_get_max_expected_size,      /* msg_get_max_expected_size */
+    na_ofi_msg_get_unexpected_header_size, /* msg_get_unexpected_header_size */
+    NULL,                                  /* msg_get_expected_header_size */
+    na_ofi_msg_get_max_tag,                /* msg_get_max_tag */
+    na_ofi_msg_buf_alloc,                  /* msg_buf_alloc */
+    na_ofi_msg_buf_free,                   /* msg_buf_free */
+    na_ofi_msg_init_unexpected,            /* msg_init_unexpected */
+    na_ofi_msg_send_unexpected,            /* msg_send_unexpected */
+    na_ofi_msg_recv_unexpected,            /* msg_recv_unexpected */
+    na_ofi_msg_multi_recv_unexpected,      /* msg_multi_recv_unexpected */
+    NULL,                                  /* msg_init_expected */
+    na_ofi_msg_send_expected,              /* msg_send_expected */
+    na_ofi_msg_recv_expected,              /* msg_recv_expected */
+    na_ofi_mem_handle_create,              /* mem_handle_create */
+    na_ofi_mem_handle_create_segments,     /* mem_handle_create_segment */
+    na_ofi_mem_handle_free,                /* mem_handle_free */
+    na_ofi_mem_handle_get_max_segments,    /* mem_handle_get_max_segments */
+    na_ofi_mem_register,                   /* mem_register */
+    na_ofi_mem_deregister,                 /* mem_deregister */
+    na_ofi_mem_handle_get_serialize_size,  /* mem_handle_get_serialize_size */
+    na_ofi_mem_handle_serialize,           /* mem_handle_serialize */
+    na_ofi_mem_handle_deserialize,         /* mem_handle_deserialize */
+    na_ofi_put,                            /* put */
+    na_ofi_get,                            /* get */
+    na_ofi_poll_get_fd,                    /* poll_get_fd */
+    na_ofi_poll_try_wait,                  /* poll_try_wait */
+    na_ofi_progress,                       /* progress */
+    na_ofi_cancel                          /* cancel */
+};
+
+
+
+
 
 
 
@@ -131,17 +191,28 @@ typedef enum hg_return { HG_RETURN_VALUES } hg_return_t;
 na_test_usage(const char *execname)
 
 
+设置协议
+bulk测试参考: https://cpp.hotexamples.com/zh/examples/-/-/HG_Test_init/cpp-hg_test_init-function-examples.html
 ut 单元测试: Testing/unit/hg/CMakeLists.txt
+/home/xb/project/mercury/build/bin/hg_test_bulk
+server:
+ # HG_Core_init_opt2(): Initializing with ofi+verbs;ofi_rxm://172.17.29.63:55555, listen=1
 Testing/unit/hg/test_bulk.c -> main(int argc, char *argv[])
     hg_ret = hg_unit_init(argc, argv, false, &info);
         ret = HG_Test_init(argc, argv, &info->hg_test_info)
             HG_Set_log_subsys("hg,hg_test")
             hg_test_parse_options(argc, argv, hg_test_info)
+                long int cpu_count = sysconf(_SC_NPROCESSORS_CONF); -> 64线程
             NA_Test_init(argc, argv, &hg_test_info->na_test_info)
                 na_test_parse_options(argc, argv, na_test_info)
+                NA_Cleanup()
+                    na_sm_cleanup
+                if (na_test_info->busy_wait) -> busy_wait 忙等待, 无阻塞
+                    na_init_info.progress_mode = NA_NO_BLOCK
+                na_init_info.thread_mode = na_test_info->use_threads ? 0 : NA_THREAD_MODE_SINGLE; -> 线程模型
                 na_test_gen_config
                     sprintf(info_string_ptr, "%s://", na_test_info->protocol) -> 拼接协议/域
-                NA_Initialize_opt2(info_string
+                NA_Initialize_opt2(info_string -> ofi+tcp://172.17.29.63:55555
                 na_test_self_addr_publish
                 na_test_get_config -> 读取之前设置的配置文件
             HG_Init_opt2
@@ -161,4 +232,33 @@ Testing/unit/hg/test_bulk.c -> main(int argc, char *argv[])
                 hg_thread_create(&priv_pool->threads[i], hg_thread_pool_worker, (void *) priv_pool)
                     pthread_create | win32 CreateThread
     HG_TEST_CHECK_HG_ERROR
+
+
+要在CMake中使用C++11，只要在CMakeLists.txt中添加一行
+add_definitions(-std=c++11)
+
+
+
+
+na_sm_cleanup
+    nftw(NA_SM_TMP_DIRECTORY, na_sm_sock_path_cleanup, NA_SM_CLEANUP_NFDS, FTW_PHYS | FTW_DEPTH)
+        ret = remove(fpath)
+    nftw(NA_SM_SHM_PATH, na_sm_shm_cleanup, NA_SM_CLEANUP_NFDS, FTW_PHYS)
+        hg_mem_shm_unmap(shm_name, NULL, 0)
+            int rc = munmap(mem_ptr, size)
+            int rc = shm_unlink(name)
+            
+
+
+
+
+info, 协议, 域, 格式, 网络抽象类
+https://mercury-hpc.github.io/user/na/
+
+Plugin	Protocol	Initialization format1
+ofi	    tcp          ofi+tcp[://<hostname,IP,interface name>:<port>]
+ofi	    verbs        ofi+verbs[://[MLX device/]<hostname,IP,interface name>:<port>]2
+ofi shm ofi+shm3
+ofi opx ofi+opx[://<HFI device>:<port>]
+hg_info for provider name verbs;ofi_rxm (e.g., mlx5_0)
 
