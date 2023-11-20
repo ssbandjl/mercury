@@ -1,0 +1,86 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "bulk_server_05",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/home/xb/project/mercury/build/bin/05_hg_server_bulk",
+      // "args": ["\"ofi+verbs;ofi_rxm://172.17.29.63:55555\""],
+      "args": ["\"ofi+tcp://172.17.29.63:55555\""],
+      "stopAtEntry": false,
+      "cwd": "/home/xb/project/mercury/build/bin/",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/bin/gdb",
+      "setupCommands": [
+          {
+              "description": "Enable pretty-printing for gdb",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+          },
+          {
+              "description": "Set Disassembly Flavor to Intel",
+              "text": "-gdb-set disassembly-flavor intel",
+              "ignoreFailures": true
+          }
+      ]
+    },
+    {
+      "name": "bulk_client_05",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/home/xb/project/mercury/build/bin/05_hg_client_bulk",
+      // "args": ["verbs", "\"ofi+verbs;ofi_rxm://172.17.29.63:55555\"", "/home/xb/project/mercury/build/bulk1m"],
+      "args": ["tcp", "\"ofi+tcp://172.17.29.64:55555\"", "/home/xb/project/mercury/build/bulk1m"],
+      "stopAtEntry": false,
+      "cwd": "/home/xb/project/mercury/build/bin/",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/bin/gdb",
+      "setupCommands": [
+          {
+              "description": "Enable pretty-printing for gdb",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+          },
+          {
+              "description": "Set Disassembly Flavor to Intel",
+              "text": "-gdb-set disassembly-flavor intel",
+              "ignoreFailures": true
+          }
+      ]
+    },
+    {
+      "name": "hg_test_bulk",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/home/xb/project/mercury/build/bin/hg_test_bulk",
+      "args": ["-p", "\"ofi+verbs;ofi_rxm\"", "-L", "-P", "55555", "-H", "172.17.29.63"],
+    //   "args": ["-p", "\"ofi+tcp\"", "-L", "-P", "55555", "-H", "172.17.29.63"],
+      "stopAtEntry": false,
+      "cwd": "/home/xb/project/mercury/build/bin",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/bin/gdb",
+      "setupCommands": [
+          {
+              "description": "Enable pretty-printing for gdb",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+          },
+          {
+              "description": "Set Disassembly Flavor to Intel",
+              "text": "-gdb-set disassembly-flavor intel",
+              "ignoreFailures": true
+          }
+      ]
+    },
+  ]
+}
