@@ -36,10 +36,11 @@ main
       hg_bulk_create_na_mem_descs 单独注册内存描述 individually 分为静态staic和动态数组dynamic
         hg_bulk_register 注册段 传递索引i
           NA_Mem_handle_create
-            mem_handler_create -> na_ofi_mem_handler_create
+            mem_handle_create -> na_ofi_mem_handle_create
               NA_UNUSED 编译参数 忽略编译告警
               calloc
-              na_ofi_mem_desc s[0] 单段， d 多段
+              na_ofi_mem_desc s[0] 单段(定长数组, 最大8个IO向量)， d 多段(指针) <- mem_handle_create_segment
+              na_ofi_mem_handle->desc.iov.s[0].iov_base = buf
               flags & 0xff 全1
           NA_Mem_register
             mem_register na_ofi_mem_register
@@ -522,3 +523,20 @@ hg_core_progress -> 中断模式和轮询模式自动切换
 
 
   
+bulk_多段:
+HG_BULK_REGV
+...
+hg_bulk_create
+    hg_bulk->desc.info.flags |= HG_BULK_REGV
+    hg_bulk_register_segments
+        NA_Mem_handle_create_segments
+            mem_handle_create_segments -> na_ofi_mem_handle_create_segments
+                if (segment_count > NA_OFI_IOV_STATIC_MAX) -> 超过8段
+                    na_ofi_mem_handle->desc.iov.d
+                for (i = 0; i < segment_count; i++)
+                    iov[i].iov_base = (void *) segments[i].base
+                    
+
+
+
+
