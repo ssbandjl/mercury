@@ -84,11 +84,12 @@ main
   HG_Addr_self
   HG_Addr_to_string
   HG_Context_create
+  hg_id_t rpc_id = MERCURY_REGISTER(state.hg_class, "save", save_in_t, save_out_t, save) -> 注册服务端接收回调 -> hg_return_t save(hg_handle_t handle)
   HG_Register_data
   do
     HG_Trigger
     HG_Progress
-  save
+  hg_return_t save(hg_handle_t handle) -> 收到客户端数据后,执行回调
     HG_Bulk_transfer(stt->hg_context, save_bulk_completed, my_rpc_state, HG_BULK_PULL, info->addr, in.bulk_handle, 0, my_rpc_state->bulk_handle, 0, my_rpc_state->size, HG_OP_ID_IGNORE) origin and local 对齐 -> 服务端通过RDMA的单边读请求, 从客户端DMA拉取数据
   HG_Context_destroy
   HG_Finalize
