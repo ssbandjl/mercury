@@ -265,6 +265,49 @@ hg_info for provider name verbs;ofi_rxm (e.g., mlx5_0)
 
 
 
+提供者类型:
+/* clang-format off */
+#define NA_OFI_PROV_TYPES                                                      \
+    X(NA_OFI_PROV_NULL, "", "", 0, 0, 0, 0, 0, 0)                              \
+    X(NA_OFI_PROV_SHM,                                                         \
+      "shm",                                                                   \
+      "sm",                                                                    \
+      FI_ADDR_STR,                                                             \
+      FI_ADDR_STR,                                                             \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_SHM,                                                            \
+      FI_SOURCE | FI_MULTI_RECV,                                               \
+      NA_OFI_HMEM                                                              \
+    )                                                                          \
+    X(NA_OFI_PROV_SOCKETS,                                                     \
+      "sockets",                                                               \
+      "",                                                                      \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_AUTO,                                                        \
+      FI_PROTO_SOCK_TCP,                                                       \
+      FI_SOURCE | FI_MULTI_RECV,                                               \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD | NA_OFI_SEP | NA_OFI_DOM_SHARED       \
+    )                                                                          \
+    X(NA_OFI_PROV_TCP,                                                         \
+      "tcp",                                                                   \
+      "tcp_exp",                                                               \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_XNET,                                                           \
+      FI_MULTI_RECV,                                                           \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD                                        \
+    )                                                                          \
+    X(NA_OFI_PROV_TCP_RXM,                                                     \
+      "tcp;ofi_rxm",                                                           \
+      "",                                                                      \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_RXM,                                                            \
+      FI_MULTI_RECV,                                                           \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD                                        \
+      
 
-
-
+      
