@@ -17,17 +17,32 @@
 /*************************************/
 
 /* Previous versions of init info to keep compatiblity with older versions */
-struct hg_init_info_2_2 {
-    struct na_init_info na_init_info;
+struct hg_init_info_2_3 {
+    struct na_init_info_4_0 na_init_info;
     na_class_t *na_class;
-    hg_uint32_t request_post_init;
-    hg_uint32_t request_post_incr;
-    hg_bool_t auto_sm;
+    uint32_t request_post_init;
+    uint32_t request_post_incr;
+    uint8_t auto_sm;
     const char *sm_info_string;
     hg_checksum_level_t checksum_level;
-    hg_bool_t no_bulk_eager;
-    hg_bool_t no_loopback;
-    hg_bool_t stats;
+    uint8_t no_bulk_eager;
+    uint8_t no_loopback;
+    uint8_t stats;
+    uint8_t no_multi_recv;
+    uint8_t release_input_early;
+};
+
+struct hg_init_info_2_2 {
+    struct na_init_info_4_0 na_init_info;
+    na_class_t *na_class;
+    uint32_t request_post_init;
+    uint32_t request_post_incr;
+    uint8_t auto_sm;
+    const char *sm_info_string;
+    hg_checksum_level_t checksum_level;
+    uint8_t no_bulk_eager;
+    uint8_t no_loopback;
+    uint8_t stats;
 };
 
 /* Private callback type after completion of operations */
@@ -47,7 +62,7 @@ struct hg_completion_entry {
         hg_core_handle_t hg_core_handle;
         struct hg_bulk_op_id *hg_bulk_op_id;
     } op_id;
-    HG_QUEUE_ENTRY(hg_completion_entry) entry;
+    STAILQ_ENTRY(hg_completion_entry) entry;
     hg_op_type_t op_type;
 };
 
@@ -87,8 +102,11 @@ extern "C" {
  * Duplicate init info for ABI compatibility.
  */
 static HG_INLINE void
-hg_init_info_dup_2_2(struct hg_init_info *hg_init_info,
-    const struct hg_init_info_2_2 *hg_init_info_2_2);
+hg_init_info_dup_2_3(
+    struct hg_init_info *new_info, const struct hg_init_info_2_3 *old_info);
+static HG_INLINE void
+hg_init_info_dup_2_2(
+    struct hg_init_info *new_info, const struct hg_init_info_2_2 *old_info);
 
 /**
  * Increment bulk handle counter.
@@ -113,12 +131,12 @@ hg_core_context_get_bulk_op_pool(struct hg_core_context *core_context);
  */
 HG_PRIVATE void
 hg_core_completion_add(struct hg_core_context *core_context,
-    struct hg_completion_entry *hg_completion_entry, hg_bool_t loopback_notify);
+    struct hg_completion_entry *hg_completion_entry, bool loopback_notify);
 
 /**
  * Trigger callback from bulk op ID.
  */
-HG_PRIVATE hg_return_t
+HG_PRIVATE void
 hg_bulk_trigger_entry(struct hg_bulk_op_id *hg_bulk_op_id);
 
 /**
@@ -136,22 +154,48 @@ hg_bulk_op_pool_destroy(struct hg_bulk_op_pool *hg_bulk_op_pool);
 
 /*---------------------------------------------------------------------------*/
 static HG_INLINE void
-hg_init_info_dup_2_2(struct hg_init_info *hg_init_info,
-    const struct hg_init_info_2_2 *hg_init_info_2_2)
+hg_init_info_dup_2_3(
+    struct hg_init_info *new_info, const struct hg_init_info_2_3 *old_info)
 {
-    *hg_init_info =
-        (struct hg_init_info){.na_init_info = hg_init_info_2_2->na_init_info,
-            .na_class = hg_init_info_2_2->na_class,
-            .request_post_init = hg_init_info_2_2->request_post_init,
-            .request_post_incr = hg_init_info_2_2->request_post_incr,
-            .auto_sm = hg_init_info_2_2->auto_sm,
-            .sm_info_string = hg_init_info_2_2->sm_info_string,
-            .checksum_level = hg_init_info_2_2->checksum_level,
-            .no_bulk_eager = hg_init_info_2_2->no_bulk_eager,
-            .no_loopback = hg_init_info_2_2->no_loopback,
-            .stats = hg_init_info_2_2->stats,
-            .no_multi_recv = HG_FALSE,
-            .release_input_early = HG_FALSE};
+    *new_info = (struct hg_init_info){.na_init_info = old_info->na_init_info,
+        .na_class = old_info->na_class,
+        .request_post_init = old_info->request_post_init,
+        .request_post_incr = (int32_t) old_info->request_post_incr,
+        .auto_sm = old_info->auto_sm,
+        .sm_info_string = old_info->sm_info_string,
+        .checksum_level = old_info->checksum_level,
+        .no_bulk_eager = old_info->no_bulk_eager,
+        .no_loopback = old_info->no_loopback,
+        .stats = old_info->stats,
+        .no_multi_recv = old_info->no_multi_recv,
+        .release_input_early = old_info->release_input_early,
+        .traffic_class = NA_TC_UNSPEC,
+        .no_overflow = false,
+        .multi_recv_op_max = 0,
+        .multi_recv_copy_threshold = 0};
+}
+
+/*---------------------------------------------------------------------------*/
+static HG_INLINE void
+hg_init_info_dup_2_2(
+    struct hg_init_info *new_info, const struct hg_init_info_2_2 *old_info)
+{
+    *new_info = (struct hg_init_info){.na_init_info = old_info->na_init_info,
+        .na_class = old_info->na_class,
+        .request_post_init = old_info->request_post_init,
+        .request_post_incr = (int32_t) old_info->request_post_incr,
+        .auto_sm = old_info->auto_sm,
+        .sm_info_string = old_info->sm_info_string,
+        .checksum_level = old_info->checksum_level,
+        .no_bulk_eager = old_info->no_bulk_eager,
+        .no_loopback = old_info->no_loopback,
+        .stats = old_info->stats,
+        .no_multi_recv = false,
+        .release_input_early = false,
+        .traffic_class = NA_TC_UNSPEC,
+        .no_overflow = false,
+        .multi_recv_op_max = 0,
+        .multi_recv_copy_threshold = 0};
 }
 
 #ifdef __cplusplus

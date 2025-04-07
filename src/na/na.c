@@ -78,7 +78,7 @@ struct na_private_class {
 
 /* Completion queue */
 struct na_completion_queue {
-    HG_QUEUE_HEAD(na_cb_completion_data) queue; /* Completion queue */
+    STAILQ_HEAD(, na_cb_completion_data) queue; /* Completion queue */
     hg_thread_spin_t lock;                      /* Completion queue lock */
     hg_atomic_int32_t count;                    /* Number of entries */
 };
@@ -162,6 +162,11 @@ static void
 na_plugin_close(struct na_plugin_entry *entry);
 #endif /* NA_HAS_DYNAMIC_PLUGINS */
 
+/* Busy wait using poll */
+static na_return_t
+na_poll_busy_wait(
+    na_class_t *na_class, na_context_t *context, unsigned int timeout_ms);
+
 /*******************/
 /* Local Variables */
 /*******************/
@@ -184,9 +189,6 @@ static const struct na_class_ops *const na_plugin_static_g[] = {
 #endif
 #ifdef NA_HAS_MPI
     &NA_PLUGIN_OPS(mpi),
-#endif
-#ifdef NA_HAS_CCI
-    &NA_PLUGIN_OPS(cci),
 #endif
 #ifdef NA_HAS_PSM
     &NA_PLUGIN_OPS(psm),
@@ -224,12 +226,11 @@ static HG_LOG_DEBUG_DECL_LE(NA_SUBSYS_NAME, NA_LOG_DEBUG_LESIZE);
 static HG_LOG_DEBUG_DECL_DLOG(NA_SUBSYS_NAME) = HG_LOG_DLOG_INITIALIZER(
     NA_SUBSYS_NAME, NA_LOG_DEBUG_LESIZE);
 
-HG_LOG_SUBSYS_DLOG_DECL_REGISTER(NA_SUBSYS_NAME, HG_LOG_OUTLET_ROOT_NAME);
+HG_LOG_DLOG_DECL_REGISTER(NA_SUBSYS_NAME);
 #endif
-HG_LOG_SUBSYS_DECL_STATE_REGISTER(fatal, NA_SUBSYS_NAME, HG_LOG_ON);
 
 /* Specific log outlets */
-HG_LOG_SUBSYS_DECL_REGISTER(cls, NA_SUBSYS_NAME);
+NA_PLUGIN_VISIBILITY HG_LOG_SUBSYS_DECL_REGISTER(cls, NA_SUBSYS_NAME);
 HG_LOG_SUBSYS_DECL_REGISTER(ctx, NA_SUBSYS_NAME);
 HG_LOG_SUBSYS_DECL_REGISTER(op, NA_SUBSYS_NAME);
 HG_LOG_SUBSYS_DECL_REGISTER(addr, NA_SUBSYS_NAME);
@@ -243,8 +244,9 @@ HG_LOG_SUBSYS_DECL_STATE_REGISTER(poll_loop, NA_SUBSYS_NAME, HG_LOG_OFF);
 HG_LOG_SUBSYS_DECL_STATE_REGISTER(ip, NA_SUBSYS_NAME, HG_LOG_OFF);
 HG_LOG_SUBSYS_DECL_STATE_REGISTER(perf, NA_SUBSYS_NAME, HG_LOG_OFF);
 
-/* Extra log outlet for libfabric */
+/* Extra log outlet for libfabric / ucx */
 HG_LOG_SUBSYS_DECL_STATE_REGISTER(libfabric, NA_SUBSYS_NAME, HG_LOG_OFF);
+HG_LOG_SUBSYS_DECL_STATE_REGISTER(ucx, NA_SUBSYS_NAME, HG_LOG_OFF);
 
 #ifdef NA_HAS_DYNAMIC_PLUGINS
 /* Initialize list of plugins etc */
@@ -268,8 +270,9 @@ na_initialize(void)
         plugin_path = NA_DEFAULT_PLUGIN_PATH;
 
     ret = na_plugin_scan_path(plugin_path, &na_plugin_dynamic_g);
-    NA_CHECK_SUBSYS_WARNING(fatal, ret != NA_SUCCESS,
-        "No plugin found in path (%s), consider setting NA_PLUGIN_PATH.",
+    NA_CHECK_FATAL_DONE(ret != NA_SUCCESS,
+        "No usable plugin found in path (%s), consider setting NA_PLUGIN_PATH "
+        "if path indicated is not valid.",
         plugin_path);
 }
 
@@ -294,8 +297,9 @@ na_info_parse(
     na_info = (struct na_info *) malloc(sizeof(struct na_info));
     NA_CHECK_SUBSYS_ERROR(cls, na_info == NULL, error, ret, NA_NOMEM,
         "Could not allocate NA info struct");
-    *na_info = (struct na_info){
-        .host_name = NULL, .protocol_name = NULL, .na_init_info = NULL};
+    *na_info = (struct na_info){.host_name = NULL,
+        .protocol_name = NULL,
+        .na_init_info = NA_INIT_INFO_INITIALIZER};
 
     /* Copy info string and work from that */
     input_string = strdup(info_string);
@@ -337,7 +341,7 @@ na_info_parse(
         goto done;
 
     /* Format sanity check ("://") */
-    NA_CHECK_SUBSYS_ERROR(fatal, strncmp(locator, "//", 2) != 0, error, ret,
+    NA_CHECK_SUBSYS_FATAL(cls, strncmp(locator, "//", 2) != 0, error, ret,
         NA_PROTONOSUPPORT, "Bad address string format");
 
     /* :// followed by empty hostname is allowed, explicitly check here */
@@ -451,7 +455,7 @@ na_plugin_check_protocol(const struct na_class_ops *const class_ops[],
         if (ops->check_protocol(protocol_name))
             break;
         else
-            NA_CHECK_SUBSYS_ERROR(fatal, class_name != NULL, error, ret,
+            NA_CHECK_SUBSYS_FATAL(cls, class_name != NULL, error, ret,
                 NA_PROTONOSUPPORT,
                 "Specified class name \"%s\" does not support requested "
                 "protocol",
@@ -555,6 +559,8 @@ na_plugin_close_all(struct na_plugin_entry *entries)
     for (i = 0, entry = &entries[0]; entry->ops != NULL;
          i++, entry = &entries[i])
         na_plugin_close(entry);
+
+    free(entries);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -583,18 +589,18 @@ na_plugin_open(
     /* Open plugin */
     NA_LOG_SUBSYS_DEBUG(cls, "Opening plugin %s", entry->path);
     entry->dl_handle = hg_dl_open(entry->path);
-    NA_CHECK_SUBSYS_ERROR(cls, entry->dl_handle == NULL, error, ret, NA_NOENTRY,
-        "Could not open lib %s", entry->path);
+    NA_CHECK_SUBSYS_FATAL(cls, entry->dl_handle == NULL, error, ret, NA_NOENTRY,
+        "Could not open lib %s, %s", entry->path, hg_dl_error());
 
     /* Retrieve plugin name from file name */
     rc = sscanf(file, NA_PLUGIN_SCN_NAME, plugin_name);
-    NA_CHECK_SUBSYS_ERROR(cls, rc != 1, error, ret, NA_PROTONOSUPPORT,
+    NA_CHECK_SUBSYS_FATAL(cls, rc != 1, error, ret, NA_PROTONOSUPPORT,
         "Could not find plugin name (%s)", file);
 
     /* Generate plugin ops symbol name */
     rc = snprintf(plugin_ops_name, sizeof(plugin_ops_name), "na_%s_class_ops_g",
         plugin_name);
-    NA_CHECK_SUBSYS_ERROR(cls, rc < 0 || rc > (int) sizeof(plugin_ops_name),
+    NA_CHECK_SUBSYS_FATAL(cls, rc < 0 || rc > (int) sizeof(plugin_ops_name),
         error, ret, NA_OVERFLOW,
         "snprintf() failed or name truncated, rc: %d (expected %zu)", rc,
         sizeof(plugin_ops_name));
@@ -602,8 +608,8 @@ na_plugin_open(
     /* Get plugin ops */
     entry->ops = (const struct na_class_ops *) hg_dl_sym(
         entry->dl_handle, plugin_ops_name);
-    NA_CHECK_SUBSYS_ERROR(cls, entry->ops == NULL, error, ret, NA_NOENTRY,
-        "Could not find symbol %s", plugin_ops_name);
+    NA_CHECK_SUBSYS_FATAL(cls, entry->ops == NULL, error, ret, NA_NOENTRY,
+        "Could not find symbol %s, %s", plugin_ops_name, hg_dl_error());
 
     return NA_SUCCESS;
 
@@ -624,6 +630,37 @@ na_plugin_close(struct na_plugin_entry *entry)
     entry->ops = NULL;
 }
 #endif /* NA_HAS_DYNAMIC_PLUGINS */
+
+/*---------------------------------------------------------------------------*/
+static na_return_t
+na_poll_busy_wait(
+    na_class_t *na_class, na_context_t *context, unsigned int timeout_ms)
+{
+    hg_time_t deadline, now = hg_time_from_ms(0);
+    na_return_t ret;
+
+    if (timeout_ms != 0)
+        hg_time_get_current_ms(&now);
+    deadline = hg_time_add(now, hg_time_from_ms(timeout_ms));
+
+    do {
+        unsigned int count = 0;
+
+        ret = na_class->ops->poll(na_class, context, &count);
+        NA_CHECK_SUBSYS_NA_ERROR(poll, error, ret, "Could not poll");
+
+        if (count > 0)
+            return NA_SUCCESS;
+
+        if (timeout_ms != 0)
+            hg_time_get_current_ms(&now);
+    } while (hg_time_less(now, deadline));
+
+    return NA_TIMEOUT;
+
+error:
+    return ret;
+}
 
 /*---------------------------------------------------------------------------*/
 void
@@ -730,9 +767,9 @@ na_class_t *
 NA_Initialize_opt(const char *info_string, bool listen,
     const struct na_init_info *na_init_info)
 {
-    /* Keep as latest version until info struct is modified */
-    return NA_Initialize_opt2(info_string, listen,
-        NA_VERSION(NA_VERSION_MAJOR, NA_VERSION_MINOR), na_init_info);
+    /* v4.0 is latest version for which init struct was not versioned */
+    return NA_Initialize_opt2(
+        info_string, listen, NA_VERSION(4, 0), na_init_info);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -759,12 +796,33 @@ NA_Initialize_opt2(const char *info_string, bool listen, unsigned int version,
 
     /* Ensure init info is API compatible */
     if (na_init_info) {
-        NA_CHECK_SUBSYS_ERROR(fatal, version == 0, error, ret, NA_INVALID_ARG,
+        NA_CHECK_SUBSYS_FATAL(cls, version == 0, error, ret, NA_INVALID_ARG,
             "API version cannot be 0");
-        NA_LOG_SUBSYS_DEBUG(cls, "Init info version used: v%d.%d",
+        NA_LOG_SUBSYS_DEBUG(cls, "NA init info version used: v%d.%d",
             NA_MAJOR(version), NA_MINOR(version));
 
-        na_info->na_init_info = na_init_info;
+        /* Get init info and overwrite defaults */
+        if (NA_VERSION_GE(version, NA_VERSION(5, 0)))
+            na_info->na_init_info = *na_init_info;
+        else
+            na_init_info_dup_4_0(&na_info->na_init_info,
+                (const struct na_init_info_4_0 *) na_init_info);
+
+        NA_LOG_SUBSYS_DEBUG(cls,
+            "NA Init info: ip_subnet=%s, auth_key=%s, max_unexpected_size=%zu, "
+            "max_expected_size=%zu, progress_mode=%" PRIu8
+            ", addr_format=%d, max_contexts=%" PRIu8 ", thread_mode=%" PRIu8
+            ", request_mem_device=%u, traffic_class=%d",
+            na_info->na_init_info.ip_subnet, na_info->na_init_info.auth_key,
+            na_info->na_init_info.max_unexpected_size,
+            na_info->na_init_info.max_expected_size,
+            na_info->na_init_info.progress_mode,
+            na_info->na_init_info.addr_format,
+            na_info->na_init_info.max_contexts,
+            na_info->na_init_info.thread_mode,
+            na_info->na_init_info.request_mem_device,
+            na_info->na_init_info.traffic_class);
+
         na_private_class->na_class.progress_mode = na_init_info->progress_mode;
     }
 
@@ -798,7 +856,7 @@ NA_Initialize_opt2(const char *info_string, bool listen, unsigned int version,
             cls, error, ret, "Could not check dynamic plugins");
 #endif
 
-        NA_CHECK_SUBSYS_ERROR(fatal, ops == NULL, error, ret, NA_PROTONOSUPPORT,
+        NA_CHECK_SUBSYS_FATAL(cls, ops == NULL, error, ret, NA_PROTONOSUPPORT,
             "No suitable plugin found that matches %s", info_string);
 #ifdef NA_HAS_DYNAMIC_PLUGINS
     }
@@ -941,7 +999,7 @@ NA_Context_create_id(na_class_t *na_class, uint8_t id)
 
     /* Initialize backfill queue */
     backfill_queue = &na_private_context->backfill_queue;
-    HG_QUEUE_INIT(&backfill_queue->queue);
+    STAILQ_INIT(&backfill_queue->queue);
     hg_atomic_init32(&backfill_queue->count, 0);
     rc = hg_thread_spin_init(&backfill_queue->lock);
     NA_CHECK_SUBSYS_ERROR_NORET(
@@ -1009,7 +1067,7 @@ NA_Context_destroy(na_class_t *na_class, na_context_t *context)
     /* Check that backfill completion queue is empty now */
     backfill_queue = &na_private_context->backfill_queue;
     hg_thread_spin_lock(&backfill_queue->lock);
-    empty = HG_QUEUE_IS_EMPTY(&backfill_queue->queue);
+    empty = STAILQ_EMPTY(&backfill_queue->queue);
     hg_thread_spin_unlock(&backfill_queue->lock);
     NA_CHECK_SUBSYS_ERROR(ctx, empty == false, error, ret, NA_BUSY,
         "Completion queue should be empty");
@@ -1040,6 +1098,23 @@ NA_Context_destroy(na_class_t *na_class, na_context_t *context)
 
 error:
     return ret;
+}
+
+/*---------------------------------------------------------------------------*/
+unsigned int
+NA_Context_get_completion_count(const na_context_t *context)
+{
+    const struct na_private_context *na_private_context =
+        (const struct na_private_context *) context;
+
+    NA_CHECK_SUBSYS_ERROR_NORET(ctx, context == NULL, error, "NULL context");
+
+    return hg_atomic_queue_count(na_private_context->completion_queue) +
+           (unsigned int) hg_atomic_get32(
+               &na_private_context->backfill_queue.count);
+
+error:
+    return 0;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1711,35 +1786,29 @@ error:
 }
 
 /*---------------------------------------------------------------------------*/
-bool
-NA_Poll_try_wait(na_class_t *na_class, na_context_t *context)
+na_return_t
+NA_Poll_wait(na_class_t *na_class, na_context_t *context,
+    unsigned int timeout_ms, unsigned int *count_p)
 {
-    struct na_private_context *na_private_context =
-        (struct na_private_context *) context;
+    unsigned int completion_count = NA_Context_get_completion_count(context);
+    unsigned int wait_timeout = timeout_ms;
+    na_return_t ret;
 
-    NA_CHECK_SUBSYS_ERROR_NORET(poll, na_class == NULL, error, "NULL NA class");
-    NA_CHECK_SUBSYS_ERROR_NORET(poll, context == NULL, error, "NULL context");
+    if (completion_count > 0)
+        wait_timeout = 0;
 
-    /* Do not try to wait if NA_NO_BLOCK is set */
-    if (na_class->progress_mode & NA_NO_BLOCK)
-        return false;
+    if (na_class->ops->poll_wait)
+        ret = na_class->ops->poll_wait(
+            na_class, context, wait_timeout, NULL /* unused */);
+    else
+        ret = na_poll_busy_wait(na_class, context, wait_timeout);
 
-    /* Something is in one of the completion queues */
-    if (!hg_atomic_queue_is_empty(na_private_context->completion_queue) ||
-        hg_atomic_get32(&na_private_context->backfill_queue.count) > 0)
-        return false;
-
-    /* Check plugin try wait */
-    if (na_class->ops && na_class->ops->na_poll_try_wait)
-        return na_class->ops->na_poll_try_wait(na_class, context);
-
-    NA_LOG_SUBSYS_DEBUG(
-        poll_loop, "Safe to wait on context (%p)", (void *) context);
-
-    return true;
-
-error:
-    return false;
+    if ((ret == NA_TIMEOUT && completion_count > 0) || (ret == NA_SUCCESS)) {
+        if (count_p != NULL)
+            *count_p = NA_Context_get_completion_count(context);
+        return NA_SUCCESS;
+    } else
+        return ret;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1761,11 +1830,6 @@ NA_Progress(
     NA_CHECK_SUBSYS_ERROR(poll, na_private_context == NULL, done, ret,
         NA_INVALID_ARG, "NULL context");
     progress_multi = &na_private_context->progress_multi;
-
-    NA_CHECK_SUBSYS_ERROR(poll, na_class->ops == NULL, done, ret,
-        NA_INVALID_ARG, "NULL NA class ops");
-    NA_CHECK_SUBSYS_ERROR(poll, na_class->ops->progress == NULL, done, ret,
-        NA_OPNOTSUPPORTED, "progress plugin callback is not defined");
 
     NA_LOG_SUBSYS_DEBUG(poll_loop,
         "Entering progress on context (%p) for %u ms", (void *) context,
@@ -1814,18 +1878,9 @@ NA_Progress(
             remaining = 0;
     }
 
-    /* Something is in one of the completion queues */
-    if (!hg_atomic_queue_is_empty(na_private_context->completion_queue) ||
-        hg_atomic_get32(&na_private_context->backfill_queue.count) > 0) {
-        ret = NA_SUCCESS; /* Progressed */
-        goto unlock;
-    }
+    ret = NA_Poll_wait(
+        na_class, context, (unsigned int) (remaining * 1000.0), NULL);
 
-    /* Try to make progress for remaining time */
-    ret = na_class->ops->progress(
-        na_class, context, (unsigned int) (remaining * 1000.0));
-
-unlock:
     do {
         old = hg_atomic_get32(&progress_multi->count);
         num = (old - 1) ^ (int32_t) NA_PROGRESS_LOCK;
@@ -1846,21 +1901,7 @@ na_return_t
 NA_Progress(
     na_class_t *na_class, na_context_t *context, unsigned int timeout_ms)
 {
-    struct na_private_context *na_private_context =
-        (struct na_private_context *) context;
-
-    NA_LOG_SUBSYS_DEBUG(poll_loop,
-        "Entering progress on context (%p) for %u ms", (void *) context,
-        timeout_ms);
-
-    /* Something is in one of the completion queues */
-    if (!hg_atomic_queue_is_empty(na_private_context->completion_queue) ||
-        hg_atomic_get32(&na_private_context->backfill_queue.count) > 0) {
-        return NA_SUCCESS; /* Progressed */
-    }
-
-    /* Try to make progress for remaining time */
-    return na_class->ops->progress(na_class, context, timeout_ms);
+    return NA_Poll_wait(na_class, context, timeout_ms, NULL);
 }
 #endif
 
@@ -1890,8 +1931,8 @@ NA_Trigger(
             if (hg_atomic_get32(&backfill_queue->count)) {
                 hg_thread_spin_lock(&backfill_queue->lock);
                 if (hg_atomic_get32(&backfill_queue->count)) {
-                    completion_data_p = HG_QUEUE_FIRST(&backfill_queue->queue);
-                    HG_QUEUE_POP_HEAD(&backfill_queue->queue, entry);
+                    completion_data_p = STAILQ_FIRST(&backfill_queue->queue);
+                    STAILQ_REMOVE_HEAD(&backfill_queue->queue, entry);
                     hg_atomic_decr32(&backfill_queue->count);
                 }
                 hg_thread_spin_unlock(&backfill_queue->lock);
@@ -1965,7 +2006,7 @@ error:
 const char *
 NA_Error_to_string(na_return_t errnum)
 {
-    return na_return_name_g[errnum];
+    return errnum < NA_RETURN_MAX ? na_return_name_g[errnum] : NULL;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -2034,7 +2075,7 @@ na_cb_completion_add(
 
         /* Queue is full */
         hg_thread_spin_lock(&backfill_queue->lock);
-        HG_QUEUE_PUSH_TAIL(
+        STAILQ_INSERT_TAIL(
             &backfill_queue->queue, na_cb_completion_data, entry);
         hg_atomic_incr32(&backfill_queue->count);
         hg_thread_spin_unlock(&backfill_queue->lock);

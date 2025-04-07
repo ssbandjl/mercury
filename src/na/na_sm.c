@@ -14,10 +14,8 @@
 #include "mercury_atomic_queue.h"
 #include "mercury_event.h"
 #include "mercury_hash_table.h"
-#include "mercury_list.h"
 #include "mercury_mem.h"
 #include "mercury_poll.h"
-#include "mercury_queue.h"
 #include "mercury_thread_mutex.h"
 #include "mercury_thread_rwlock.h"
 #include "mercury_thread_spin.h"
@@ -281,7 +279,7 @@ enum na_sm_poll_type {
 /* Address */
 struct na_sm_addr {
     hg_thread_mutex_t resolve_lock;     /* Lock to resolve address */
-    HG_LIST_ENTRY(na_sm_addr) entry;    /* Entry in poll list */
+    LIST_ENTRY(na_sm_addr) entry;       /* Entry in poll list */
     struct na_sm_addr_key addr_key;     /* Address key */
     struct na_sm_endpoint *endpoint;    /* Endpoint */
     struct na_sm_region *shared_region; /* Shared-memory region */
@@ -300,7 +298,7 @@ struct na_sm_addr {
 
 /* Address list */
 struct na_sm_addr_list {
-    HG_LIST_HEAD(na_sm_addr) list;
+    LIST_HEAD(, na_sm_addr) list;
     hg_thread_spin_t lock;
 };
 
@@ -341,7 +339,7 @@ struct na_sm_msg_info {
 
 /* Unexpected msg info */
 struct na_sm_unexpected_info {
-    HG_QUEUE_ENTRY(na_sm_unexpected_info) entry;
+    STAILQ_ENTRY(na_sm_unexpected_info) entry;
     struct na_sm_addr *na_sm_addr;
     void *buf;
     size_t buf_size;
@@ -350,7 +348,7 @@ struct na_sm_unexpected_info {
 
 /* Unexpected msg queue */
 struct na_sm_unexpected_msg_queue {
-    HG_QUEUE_HEAD(na_sm_unexpected_info) queue;
+    STAILQ_HEAD(, na_sm_unexpected_info) queue;
     hg_thread_spin_t lock;
 };
 
@@ -364,17 +362,17 @@ struct na_sm_op_id {
     struct na_cb_completion_data completion_data; /* Completion data */
     union {
         struct na_sm_msg_info msg;
-    } info;                            /* Op info                  */
-    HG_QUEUE_ENTRY(na_sm_op_id) entry; /* Entry in queue           */
-    na_class_t *na_class;              /* NA class associated      */
-    na_context_t *context;             /* NA context associated    */
-    struct na_sm_addr *addr;           /* Address associated       */
-    hg_atomic_int32_t status;          /* Operation status         */
+    } info;                         /* Op info                  */
+    TAILQ_ENTRY(na_sm_op_id) entry; /* Entry in queue           */
+    na_class_t *na_class;           /* NA class associated      */
+    na_context_t *context;          /* NA context associated    */
+    struct na_sm_addr *addr;        /* Address associated       */
+    hg_atomic_int32_t status;       /* Operation status         */
 };
 
 /* Op ID queue */
 struct na_sm_op_queue {
-    HG_QUEUE_HEAD(na_sm_op_id) queue;
+    TAILQ_HEAD(, na_sm_op_id) queue;
     hg_thread_spin_t lock;
 };
 
@@ -795,14 +793,15 @@ na_sm_process_vm_readv(pid_t pid, const struct iovec *local_iov,
  * Poll waiting for timeout milliseconds.
  */
 static na_return_t
-na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
-    unsigned int timeout, bool *progressed_ptr);
+na_sm_progress_wait(na_context_t *context,
+    struct na_sm_endpoint *na_sm_endpoint, unsigned int timeout,
+    unsigned int *count_p);
 
 /**
  * Poll without waiting.
  */
 static na_return_t
-na_sm_poll(struct na_sm_endpoint *na_sm_endpoint, bool *progressed_ptr);
+na_sm_progress(struct na_sm_endpoint *na_sm_endpoint, unsigned int *count_p);
 
 /**
  * Progress on endpoint sock.
@@ -1068,10 +1067,14 @@ na_sm_poll_get_fd(na_class_t *na_class, na_context_t *context);
 static NA_INLINE bool
 na_sm_poll_try_wait(na_class_t *na_class, na_context_t *context);
 
-/* progress */
+/* poll */
 static na_return_t
-na_sm_progress(
-    na_class_t *na_class, na_context_t *context, unsigned int timeout);
+na_sm_poll(na_class_t *na_class, na_context_t *context, unsigned int *count_p);
+
+/* poll_wait */
+static na_return_t
+na_sm_poll_wait(na_class_t *na_class, na_context_t *context,
+    unsigned int timeout, unsigned int *count_p);
 
 /* cancel */
 static na_return_t
@@ -1135,7 +1138,8 @@ const struct na_class_ops NA_PLUGIN_OPS(sm) = {
     na_sm_get,                           /* get */
     na_sm_poll_get_fd,                   /* poll_get_fd */
     na_sm_poll_try_wait,                 /* poll_try_wait */
-    na_sm_progress,                      /* progress */
+    na_sm_poll,                          /* poll */
+    na_sm_poll_wait,                     /* poll_wait */
     na_sm_cancel                         /* cancel */
 };
 
@@ -2130,8 +2134,8 @@ na_sm_endpoint_open(struct na_sm_endpoint *na_sm_endpoint, const char *name,
 
     /* Generate new SM ID (TODO fix that to avoid reaching limit) */
     addr_key.id = ((unsigned int) (hg_atomic_incr32(&sm_id_g) - 1)) & 0xff;
-    NA_CHECK_SUBSYS_ERROR(fatal, addr_key.id > UINT8_MAX, error, ret,
-        NA_OVERFLOW, "Reached maximum number of SM instances for this process");
+    NA_CHECK_SUBSYS_FATAL(cls, addr_key.id > UINT8_MAX, error, ret, NA_OVERFLOW,
+        "Reached maximum number of SM instances for this process");
 
     /* Save listen state */
     na_sm_endpoint->listen = listen;
@@ -2140,16 +2144,16 @@ na_sm_endpoint_open(struct na_sm_endpoint *na_sm_endpoint, const char *name,
         addr_key.pid, addr_key.id);
 
     /* Initialize queues */
-    HG_QUEUE_INIT(&na_sm_endpoint->unexpected_msg_queue.queue);
+    STAILQ_INIT(&na_sm_endpoint->unexpected_msg_queue.queue);
     hg_thread_spin_init(&na_sm_endpoint->unexpected_msg_queue.lock);
 
-    HG_QUEUE_INIT(&na_sm_endpoint->unexpected_op_queue.queue);
+    TAILQ_INIT(&na_sm_endpoint->unexpected_op_queue.queue);
     hg_thread_spin_init(&na_sm_endpoint->unexpected_op_queue.lock);
 
-    HG_QUEUE_INIT(&na_sm_endpoint->expected_op_queue.queue);
+    TAILQ_INIT(&na_sm_endpoint->expected_op_queue.queue);
     hg_thread_spin_init(&na_sm_endpoint->expected_op_queue.lock);
 
-    HG_QUEUE_INIT(&na_sm_endpoint->retry_op_queue.queue);
+    TAILQ_INIT(&na_sm_endpoint->retry_op_queue.queue);
     hg_thread_spin_init(&na_sm_endpoint->retry_op_queue.lock);
 
     /* Initialize number of fds */
@@ -2157,7 +2161,7 @@ na_sm_endpoint_open(struct na_sm_endpoint *na_sm_endpoint, const char *name,
     na_sm_endpoint->nofile_max = nofile_max;
 
     /* Initialize poll addr list */
-    HG_LIST_INIT(&na_sm_endpoint->poll_addr_list.list);
+    LIST_INIT(&na_sm_endpoint->poll_addr_list.list);
     hg_thread_spin_init(&na_sm_endpoint->poll_addr_list.lock);
 
     /* Create addr hash-table */
@@ -2173,7 +2177,7 @@ na_sm_endpoint_open(struct na_sm_endpoint *na_sm_endpoint, const char *name,
             NA_LOG_SUBSYS_DEBUG(
                 cls, "Using passed endpoint name as URI %s", name);
 
-            NA_CHECK_SUBSYS_ERROR(fatal, strchr(name, '/'), error, ret,
+            NA_CHECK_SUBSYS_FATAL(cls, strchr(name, '/'), error, ret,
                 NA_INVALID_ARG, "Cannot use '/' in endpoint name (passed '%s')",
                 name);
             strncpy(uri, name, NA_SM_MAX_FILENAME - 1);
@@ -2287,7 +2291,7 @@ na_sm_endpoint_open(struct na_sm_endpoint *na_sm_endpoint, const char *name,
     if (listen) {
         /* Add address to list of addresses to poll */
         hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-        HG_LIST_INSERT_HEAD(&na_sm_endpoint->poll_addr_list.list,
+        LIST_INSERT_HEAD(&na_sm_endpoint->poll_addr_list.list,
             na_sm_endpoint->source_addr, entry);
         hg_thread_spin_unlock(&na_sm_endpoint->poll_addr_list.lock);
     }
@@ -2354,15 +2358,15 @@ na_sm_endpoint_close(struct na_sm_endpoint *na_sm_endpoint)
     bool empty;
 
     /* Check that poll addr list is empty */
-    empty = HG_LIST_IS_EMPTY(&na_sm_endpoint->poll_addr_list.list);
+    empty = LIST_EMPTY(&na_sm_endpoint->poll_addr_list.list);
     if (!empty) {
         struct na_sm_addr *na_sm_addr;
 
-        na_sm_addr = HG_LIST_FIRST(&na_sm_endpoint->poll_addr_list.list);
+        na_sm_addr = LIST_FIRST(&na_sm_endpoint->poll_addr_list.list);
         while (na_sm_addr) {
-            struct na_sm_addr *next = HG_LIST_NEXT(na_sm_addr, entry);
+            struct na_sm_addr *next = LIST_NEXT(na_sm_addr, entry);
 
-            HG_LIST_REMOVE(na_sm_addr, entry);
+            LIST_REMOVE(na_sm_addr, entry);
 
             /* Destroy remaining addresses */
             if (na_sm_addr != source_addr)
@@ -2370,28 +2374,28 @@ na_sm_endpoint_close(struct na_sm_endpoint *na_sm_endpoint)
             na_sm_addr = next;
         }
         /* Sanity check */
-        empty = HG_LIST_IS_EMPTY(&na_sm_endpoint->poll_addr_list.list);
+        empty = LIST_EMPTY(&na_sm_endpoint->poll_addr_list.list);
     }
     NA_CHECK_SUBSYS_ERROR(cls, empty == false, done, ret, NA_BUSY,
         "Poll addr list should be empty");
 
     /* Check that unexpected message queue is empty */
-    empty = HG_QUEUE_IS_EMPTY(&na_sm_endpoint->unexpected_msg_queue.queue);
+    empty = STAILQ_EMPTY(&na_sm_endpoint->unexpected_msg_queue.queue);
     NA_CHECK_SUBSYS_ERROR(cls, empty == false, done, ret, NA_BUSY,
         "Unexpected msg queue should be empty");
 
     /* Check that unexpected op queue is empty */
-    empty = HG_QUEUE_IS_EMPTY(&na_sm_endpoint->unexpected_op_queue.queue);
+    empty = TAILQ_EMPTY(&na_sm_endpoint->unexpected_op_queue.queue);
     NA_CHECK_SUBSYS_ERROR(cls, empty == false, done, ret, NA_BUSY,
         "Unexpected op queue should be empty");
 
     /* Check that expected op queue is empty */
-    empty = HG_QUEUE_IS_EMPTY(&na_sm_endpoint->expected_op_queue.queue);
+    empty = TAILQ_EMPTY(&na_sm_endpoint->expected_op_queue.queue);
     NA_CHECK_SUBSYS_ERROR(cls, empty == false, done, ret, NA_BUSY,
         "Expected op queue should be empty");
 
     /* Check that retry op queue is empty */
-    empty = HG_QUEUE_IS_EMPTY(&na_sm_endpoint->retry_op_queue.queue);
+    empty = TAILQ_EMPTY(&na_sm_endpoint->retry_op_queue.queue);
     NA_CHECK_SUBSYS_ERROR(cls, empty == false, done, ret, NA_BUSY,
         "Retry op queue should be empty");
 
@@ -2711,7 +2715,7 @@ na_sm_addr_ref_decr(struct na_sm_addr *na_sm_addr)
     if (resolved) {
         /* Remove address from list of addresses to poll */
         hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-        HG_LIST_REMOVE(na_sm_addr, entry);
+        LIST_REMOVE(na_sm_addr, entry);
         hg_thread_spin_unlock(&na_sm_endpoint->poll_addr_list.lock);
     }
 
@@ -2820,8 +2824,7 @@ na_sm_addr_resolve(struct na_sm_addr *na_sm_addr)
 
     /* Add address to list of addresses to poll */
     hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-    HG_LIST_INSERT_HEAD(
-        &na_sm_endpoint->poll_addr_list.list, na_sm_addr, entry);
+    LIST_INSERT_HEAD(&na_sm_endpoint->poll_addr_list.list, na_sm_addr, entry);
     hg_thread_spin_unlock(&na_sm_endpoint->poll_addr_list.lock);
 
     return NA_SUCCESS;
@@ -3481,7 +3484,7 @@ na_sm_process_vm_writev(pid_t pid, const struct iovec *local_iov,
     nwrite = process_vm_writev(pid, local_iov, liovcnt, remote_iov, riovcnt, 0);
     if (unlikely(nwrite < 0)) {
         if ((errno == EPERM) && na_sm_get_ptrace_scope_value()) {
-            NA_GOTO_SUBSYS_ERROR(fatal, error, ret, na_sm_errno_to_na(errno),
+            NA_GOTO_SUBSYS_FATAL(rma, error, ret, na_sm_errno_to_na(errno),
                 "process_vm_writev() failed (%s):\n"
                 "Kernel Yama configuration does not allow cross-memory attach, "
                 "either run as root: \n"
@@ -3518,13 +3521,12 @@ na_sm_process_vm_writev(pid_t pid, const struct iovec *local_iov,
     na_return_t ret;
 
     kret = task_for_pid(mach_task_self(), pid, &remote_task);
-    NA_CHECK_SUBSYS_ERROR(fatal, kret != KERN_SUCCESS, error, ret,
-        NA_PERMISSION,
+    NA_CHECK_SUBSYS_FATAL(rma, kret != KERN_SUCCESS, error, ret, NA_PERMISSION,
         "task_for_pid() failed (%s)\n"
         "Permission must be set to access remote memory, please refer to the "
         "documentation for instructions.",
         mach_error_string(kret));
-    NA_CHECK_SUBSYS_ERROR(fatal, liovcnt > 1 || riovcnt > 1, error, ret,
+    NA_CHECK_SUBSYS_FATAL(rma, liovcnt > 1 || riovcnt > 1, error, ret,
         NA_OPNOTSUPPORTED, "Non-contiguous transfers are not supported");
 
     kret =
@@ -3555,7 +3557,7 @@ na_sm_process_vm_readv(pid_t pid, const struct iovec *local_iov,
     nread = process_vm_readv(pid, local_iov, liovcnt, remote_iov, riovcnt, 0);
     if (unlikely(nread < 0)) {
         if ((errno == EPERM) && na_sm_get_ptrace_scope_value()) {
-            NA_GOTO_SUBSYS_ERROR(fatal, error, ret, na_sm_errno_to_na(errno),
+            NA_GOTO_SUBSYS_FATAL(rma, error, ret, na_sm_errno_to_na(errno),
                 "process_vm_readv() failed (%s):\n"
                 "Kernel Yama configuration does not allow cross-memory attach, "
                 "either run as root: \n"
@@ -3593,13 +3595,12 @@ na_sm_process_vm_readv(pid_t pid, const struct iovec *local_iov,
     na_return_t ret;
 
     kret = task_for_pid(mach_task_self(), pid, &remote_task);
-    NA_CHECK_SUBSYS_ERROR(fatal, kret != KERN_SUCCESS, error, ret,
-        NA_PERMISSION,
+    NA_CHECK_SUBSYS_FATAL(rma, kret != KERN_SUCCESS, error, ret, NA_PERMISSION,
         "task_for_pid() failed (%s)\n"
         "Permission must be set to access remote memory, please refer to the "
         "documentation for instructions.",
         mach_error_string(kret));
-    NA_CHECK_SUBSYS_ERROR(fatal, liovcnt > 1 || riovcnt > 1, error, ret,
+    NA_CHECK_SUBSYS_FATAL(rma, liovcnt > 1 || riovcnt > 1, error, ret,
         NA_OPNOTSUPPORTED, "Non-contiguous transfers are not supported");
 
     kret = mach_vm_read_overwrite(remote_task,
@@ -3621,13 +3622,13 @@ error:
 
 /*---------------------------------------------------------------------------*/
 static na_return_t
-na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
-    unsigned int timeout, bool *progressed_ptr)
+na_sm_progress_wait(na_context_t *context,
+    struct na_sm_endpoint *na_sm_endpoint, unsigned int timeout,
+    unsigned int *count_p)
 {
     struct hg_poll_event *events = NA_SM_CONTEXT(context)->events;
-    unsigned int nevents = 0, i;
-    bool progressed = false;
-    na_return_t ret = NA_SUCCESS;
+    unsigned int nevents = 0, count = 0, i;
+    na_return_t ret;
     int rc;
 
     /* Just wait on a single event, anything greater may increase
@@ -3635,13 +3636,13 @@ na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
      * if something is still in the queues */
     rc = hg_poll_wait(
         na_sm_endpoint->poll_set, timeout, NA_SM_MAX_EVENTS, events, &nevents);
-    NA_CHECK_SUBSYS_ERROR(poll, rc != HG_UTIL_SUCCESS, done, ret,
+    NA_CHECK_SUBSYS_ERROR(poll, rc != HG_UTIL_SUCCESS, error, ret,
         na_sm_errno_to_na(errno), "hg_poll_wait() failed");
 
     if (nevents == 1 && (events[0].events & HG_POLLINTR)) {
         NA_LOG_SUBSYS_DEBUG(poll_loop, "Interrupted");
-        *progressed_ptr = false;
-        return ret;
+        *count_p = count;
+        return NA_SUCCESS;
     }
 
     /* Process events */
@@ -3655,7 +3656,7 @@ na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
                 NA_LOG_SUBSYS_DEBUG(poll_loop, "NA_SM_POLL_SOCK event");
                 ret = na_sm_progress_sock(na_sm_endpoint, &progressed_notify);
                 NA_CHECK_SUBSYS_NA_ERROR(
-                    poll, done, ret, "Could not progress sock");
+                    poll, error, ret, "Could not progress sock");
                 break;
             case NA_SM_POLL_TX_NOTIFY:
                 NA_LOG_SUBSYS_DEBUG(poll_loop, "NA_SM_POLL_TX_NOTIFY event");
@@ -3663,7 +3664,7 @@ na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
                     events[i].data.ptr, struct na_sm_addr, tx_poll_type);
                 ret = na_sm_progress_tx_notify(poll_addr, &progressed_notify);
                 NA_CHECK_SUBSYS_NA_ERROR(
-                    poll, done, ret, "Could not progress tx notify");
+                    poll, error, ret, "Could not progress tx notify");
                 break;
             case NA_SM_POLL_RX_NOTIFY:
                 NA_LOG_SUBSYS_DEBUG(poll_loop, "NA_SM_POLL_RX_NOTIFY event");
@@ -3672,40 +3673,42 @@ na_sm_poll_wait(na_context_t *context, struct na_sm_endpoint *na_sm_endpoint,
 
                 ret = na_sm_progress_rx_notify(poll_addr, &progressed_notify);
                 NA_CHECK_SUBSYS_NA_ERROR(
-                    poll, done, ret, "Could not progress rx notify");
+                    poll, error, ret, "Could not progress rx notify");
 
                 ret = na_sm_progress_rx_queue(
                     na_sm_endpoint, poll_addr, &progressed_rx);
                 NA_CHECK_SUBSYS_NA_ERROR(
-                    poll, done, ret, "Could not progress rx queue");
+                    poll, error, ret, "Could not progress rx queue");
 
                 break;
             default:
-                NA_GOTO_SUBSYS_ERROR(poll, done, ret, NA_INVALID_ARG,
+                NA_GOTO_SUBSYS_ERROR(poll, error, ret, NA_INVALID_ARG,
                     "Operation type %d not supported",
                     *(enum na_sm_poll_type *) events[i].data.ptr);
         }
-        progressed |= (progressed_rx | progressed_notify);
+        count += (unsigned int) (progressed_rx | progressed_notify);
     }
 
-    *progressed_ptr = progressed;
+    *count_p = count;
 
-done:
+    return NA_SUCCESS;
+
+error:
     return ret;
 }
 
 /*---------------------------------------------------------------------------*/
 static na_return_t
-na_sm_poll(struct na_sm_endpoint *na_sm_endpoint, bool *progressed_ptr)
+na_sm_progress(struct na_sm_endpoint *na_sm_endpoint, unsigned int *count_p)
 {
     struct na_sm_addr_list *poll_addr_list = &na_sm_endpoint->poll_addr_list;
     struct na_sm_addr *poll_addr;
-    bool progressed = false;
+    unsigned int count = 0;
     na_return_t ret = NA_SUCCESS;
 
     /* Check whether something is in one of the rx queues */
     hg_thread_spin_lock(&poll_addr_list->lock);
-    HG_LIST_FOREACH (poll_addr, &poll_addr_list->list, entry) {
+    LIST_FOREACH (poll_addr, &poll_addr_list->list, entry) {
         bool progressed_rx = false;
 
         hg_thread_spin_unlock(&poll_addr_list->lock);
@@ -3714,7 +3717,7 @@ na_sm_poll(struct na_sm_endpoint *na_sm_endpoint, bool *progressed_ptr)
             na_sm_progress_rx_queue(na_sm_endpoint, poll_addr, &progressed_rx);
         NA_CHECK_SUBSYS_NA_ERROR(
             poll, done, ret, "Could not progress rx queue");
-        progressed |= progressed_rx;
+        count += (unsigned int) progressed_rx;
 
         hg_thread_spin_lock(&poll_addr_list->lock);
     }
@@ -3727,10 +3730,10 @@ na_sm_poll(struct na_sm_endpoint *na_sm_endpoint, bool *progressed_ptr)
         ret = na_sm_progress_cmd_queue(na_sm_endpoint, &progressed_cmd);
         NA_CHECK_SUBSYS_NA_ERROR(
             poll, done, ret, "Could not progress cmd queue");
-        progressed |= progressed_cmd;
+        count += (unsigned int) progressed_cmd;
     }
 
-    *progressed_ptr = progressed;
+    *count_p = count;
 
 done:
     return ret;
@@ -3846,7 +3849,7 @@ na_sm_process_cmd(struct na_sm_endpoint *na_sm_endpoint,
 
             /* Add address to list of addresses to poll */
             hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-            HG_LIST_INSERT_HEAD(
+            LIST_INSERT_HEAD(
                 &na_sm_endpoint->poll_addr_list.list, na_sm_addr, entry);
             hg_thread_spin_unlock(&na_sm_endpoint->poll_addr_list.lock);
             break;
@@ -3857,7 +3860,7 @@ na_sm_process_cmd(struct na_sm_endpoint *na_sm_endpoint,
 
             /* Find address from list of addresses to poll */
             hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-            HG_LIST_FOREACH (
+            LIST_FOREACH (
                 na_sm_addr, &na_sm_endpoint->poll_addr_list.list, entry) {
                 if ((na_sm_addr->queue_pair_idx == cmd_hdr.hdr.pair_idx) &&
                     (na_sm_addr->addr_key.pid == (pid_t) cmd_hdr.hdr.pid) &&
@@ -3978,9 +3981,9 @@ na_sm_process_unexpected(struct na_sm_op_queue *unexpected_op_queue,
 
     /* Pop op ID from queue */
     hg_thread_spin_lock(&unexpected_op_queue->lock);
-    na_sm_op_id = HG_QUEUE_FIRST(&unexpected_op_queue->queue);
+    na_sm_op_id = TAILQ_FIRST(&unexpected_op_queue->queue);
     if (likely(na_sm_op_id)) {
-        HG_QUEUE_POP_HEAD(&unexpected_op_queue->queue, entry);
+        TAILQ_REMOVE(&unexpected_op_queue->queue, na_sm_op_id, entry);
         hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
     }
     hg_thread_spin_unlock(&unexpected_op_queue->lock);
@@ -4044,7 +4047,7 @@ na_sm_process_unexpected(struct na_sm_op_queue *unexpected_op_queue,
         /* Otherwise push the unexpected message into our unexpected queue so
          * that we can treat it later when a recv_unexpected is posted */
         hg_thread_spin_lock(&unexpected_msg_queue->lock);
-        HG_QUEUE_PUSH_TAIL(
+        STAILQ_INSERT_TAIL(
             &unexpected_msg_queue->queue, na_sm_unexpected_info, entry);
         hg_thread_spin_unlock(&unexpected_msg_queue->lock);
     }
@@ -4068,11 +4071,10 @@ na_sm_process_expected(struct na_sm_op_queue *expected_op_queue,
 
     /* Try to match addr/tag */
     hg_thread_spin_lock(&expected_op_queue->lock);
-    HG_QUEUE_FOREACH (na_sm_op_id, &expected_op_queue->queue, entry) {
+    TAILQ_FOREACH (na_sm_op_id, &expected_op_queue->queue, entry) {
         if (na_sm_op_id->addr == poll_addr &&
             na_sm_op_id->info.msg.tag == msg_hdr.hdr.tag) {
-            HG_QUEUE_REMOVE(
-                &expected_op_queue->queue, na_sm_op_id, na_sm_op_id, entry);
+            TAILQ_REMOVE(&expected_op_queue->queue, na_sm_op_id, entry);
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
             break;
         }
@@ -4119,7 +4121,7 @@ na_sm_process_retries(struct na_sm_endpoint *na_sm_endpoint)
 
     do {
         hg_thread_spin_lock(&op_queue->lock);
-        na_sm_op_id = HG_QUEUE_FIRST(&op_queue->queue);
+        na_sm_op_id = TAILQ_FIRST(&op_queue->queue);
         if (!na_sm_op_id) {
             hg_thread_spin_unlock(&op_queue->lock);
             /* Queue is empty */
@@ -4141,7 +4143,7 @@ na_sm_process_retries(struct na_sm_endpoint *na_sm_endpoint)
             hg_thread_spin_lock(&op_queue->lock);
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_RETRYING);
 
-            HG_QUEUE_REMOVE(&op_queue->queue, na_sm_op_id, na_sm_op_id, entry);
+            TAILQ_REMOVE(&op_queue->queue, na_sm_op_id, entry);
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
             hg_thread_spin_unlock(&op_queue->lock);
 
@@ -4155,8 +4157,7 @@ na_sm_process_retries(struct na_sm_endpoint *na_sm_endpoint)
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_RETRYING);
 
             if (hg_atomic_get32(&na_sm_op_id->status) & NA_SM_OP_CANCELED) {
-                HG_QUEUE_REMOVE(
-                    &op_queue->queue, na_sm_op_id, na_sm_op_id, entry);
+                TAILQ_REMOVE(&op_queue->queue, na_sm_op_id, entry);
                 hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
                 canceled = true;
             }
@@ -4172,7 +4173,7 @@ na_sm_process_retries(struct na_sm_endpoint *na_sm_endpoint)
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_RETRYING);
             hg_atomic_or32(&na_sm_op_id->status, NA_SM_OP_ERRORED);
 
-            HG_QUEUE_REMOVE(&op_queue->queue, na_sm_op_id, na_sm_op_id, entry);
+            TAILQ_REMOVE(&op_queue->queue, na_sm_op_id, entry);
             hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
             hg_thread_spin_unlock(&op_queue->lock);
 
@@ -4196,7 +4197,7 @@ na_sm_op_retry(struct na_sm_class *na_sm_class, struct na_sm_op_id *na_sm_op_id)
 
     /* Push op ID to retry queue */
     hg_thread_spin_lock(&retry_op_queue->lock);
-    HG_QUEUE_PUSH_TAIL(&retry_op_queue->queue, na_sm_op_id, entry);
+    TAILQ_INSERT_TAIL(&retry_op_queue->queue, na_sm_op_id, entry);
     hg_atomic_or32(&na_sm_op_id->status, NA_SM_OP_QUEUED);
     hg_thread_spin_unlock(&retry_op_queue->lock);
 }
@@ -4287,15 +4288,11 @@ static na_return_t
 na_sm_initialize(
     na_class_t *na_class, const struct na_info *na_info, bool listen)
 {
-    struct na_init_info na_init_info = NA_INIT_INFO_INITIALIZER;
+    const struct na_init_info *na_init_info = &na_info->na_init_info;
     struct na_sm_class *na_sm_class = NULL;
     struct rlimit rlimit;
     na_return_t ret;
     int rc;
-
-    /* Get init info and overwrite defaults */
-    if (na_info->na_init_info)
-        na_init_info = *na_info->na_init_info;
 
     /* Reset errno */
     errno = 0;
@@ -4318,11 +4315,11 @@ na_sm_initialize(
 #else
     na_sm_class->iov_max = 1;
 #endif
-    na_sm_class->context_max = na_init_info.max_contexts;
+    na_sm_class->context_max = na_init_info->max_contexts;
 
     /* Open endpoint */
     ret = na_sm_endpoint_open(&na_sm_class->endpoint, na_info->host_name,
-        listen, na_init_info.progress_mode & NA_NO_BLOCK,
+        listen, na_init_info->progress_mode & NA_NO_BLOCK,
         (uint32_t) rlimit.rlim_cur);
     NA_CHECK_SUBSYS_NA_ERROR(cls, error, ret, "Could not open endpoint");
 
@@ -4711,9 +4708,11 @@ na_sm_msg_recv_unexpected(na_class_t *na_class, na_context_t *context,
 
     /* Look for an unexpected message already received */
     hg_thread_spin_lock(&unexpected_msg_queue->lock);
-    na_sm_unexpected_info = HG_QUEUE_FIRST(&unexpected_msg_queue->queue);
-    HG_QUEUE_POP_HEAD(&unexpected_msg_queue->queue, entry);
+    na_sm_unexpected_info = STAILQ_FIRST(&unexpected_msg_queue->queue);
+    if (na_sm_unexpected_info != NULL)
+        STAILQ_REMOVE_HEAD(&unexpected_msg_queue->queue, entry);
     hg_thread_spin_unlock(&unexpected_msg_queue->lock);
+
     if (unlikely(na_sm_unexpected_info)) {
         /* Fill unexpected info */
         na_sm_op_id->completion_data.callback_info.info.recv_unexpected =
@@ -4740,7 +4739,7 @@ na_sm_msg_recv_unexpected(na_class_t *na_class, na_context_t *context,
 
         /* Nothing has been received yet so add op_id to progress queue */
         hg_thread_spin_lock(&unexpected_op_queue->lock);
-        HG_QUEUE_PUSH_TAIL(&unexpected_op_queue->queue, na_sm_op_id, entry);
+        TAILQ_INSERT_TAIL(&unexpected_op_queue->queue, na_sm_op_id, entry);
         hg_atomic_or32(&na_sm_op_id->status, NA_SM_OP_QUEUED);
         hg_thread_spin_unlock(&unexpected_op_queue->lock);
     }
@@ -4804,7 +4803,7 @@ na_sm_msg_recv_expected(na_class_t *na_class, na_context_t *context,
      * never arrive before that call returns (not completes), simply add
      * op_id to queue */
     hg_thread_spin_lock(&expected_op_queue->lock);
-    HG_QUEUE_PUSH_TAIL(&expected_op_queue->queue, na_sm_op_id, entry);
+    TAILQ_INSERT_TAIL(&expected_op_queue->queue, na_sm_op_id, entry);
     hg_atomic_or32(&na_sm_op_id->status, NA_SM_OP_QUEUED);
     hg_thread_spin_unlock(&expected_op_queue->lock);
 
@@ -4855,7 +4854,7 @@ na_sm_mem_handle_create_segments(na_class_t *na_class,
     NA_CHECK_SUBSYS_WARNING(mem, segment_count == 1, "Segment count is 1");
 
     /* Check that we do not exceed IOV_MAX */
-    NA_CHECK_SUBSYS_ERROR(fatal, segment_count > NA_SM_CLASS(na_class)->iov_max,
+    NA_CHECK_SUBSYS_FATAL(mem, segment_count > NA_SM_CLASS(na_class)->iov_max,
         error, ret, NA_INVALID_ARG, "Segment count exceeds IOV_MAX limit (%zu)",
         NA_SM_CLASS(na_class)->iov_max);
 
@@ -5061,7 +5060,7 @@ na_sm_poll_try_wait(na_class_t *na_class, na_context_t NA_UNUSED *context)
 
     /* Check whether something is in one of the rx queues */
     hg_thread_spin_lock(&na_sm_endpoint->poll_addr_list.lock);
-    HG_LIST_FOREACH (na_sm_addr, &na_sm_endpoint->poll_addr_list.list, entry) {
+    LIST_FOREACH (na_sm_addr, &na_sm_endpoint->poll_addr_list.list, entry) {
         if (!na_sm_msg_queue_is_empty(na_sm_addr->rx_queue)) {
             hg_thread_spin_unlock(&na_sm_endpoint->poll_addr_list.lock);
             return false;
@@ -5071,7 +5070,7 @@ na_sm_poll_try_wait(na_class_t *na_class, na_context_t NA_UNUSED *context)
 
     /* Check whether something is in the retry queue */
     hg_thread_spin_lock(&na_sm_endpoint->retry_op_queue.lock);
-    empty = HG_QUEUE_IS_EMPTY(&na_sm_endpoint->retry_op_queue.queue);
+    empty = TAILQ_EMPTY(&na_sm_endpoint->retry_op_queue.queue);
     hg_thread_spin_unlock(&na_sm_endpoint->retry_op_queue.lock);
     if (!empty)
         return false;
@@ -5081,8 +5080,42 @@ na_sm_poll_try_wait(na_class_t *na_class, na_context_t NA_UNUSED *context)
 
 /*---------------------------------------------------------------------------*/
 static na_return_t
-na_sm_progress(
-    na_class_t *na_class, na_context_t *context, unsigned int timeout_ms)
+na_sm_poll(na_class_t *na_class, na_context_t *context, unsigned int *count_p)
+{
+    struct na_sm_endpoint *na_sm_endpoint = &NA_SM_CLASS(na_class)->endpoint;
+    unsigned int count = 0;
+    na_return_t ret;
+
+    if (na_sm_endpoint->poll_set) {
+        /* Make blocking progress */
+        ret = na_sm_progress_wait(context, na_sm_endpoint, 0, &count);
+        NA_CHECK_SUBSYS_NA_ERROR(
+            poll, error, ret, "Could not make blocking progress on context");
+    } else {
+        /* Make non-blocking progress */
+        ret = na_sm_progress(na_sm_endpoint, &count);
+        NA_CHECK_SUBSYS_NA_ERROR(poll, error, ret,
+            "Could not make non-blocking progress on context");
+    }
+
+    /* Process retries */
+    ret = na_sm_process_retries(&NA_SM_CLASS(na_class)->endpoint);
+    NA_CHECK_SUBSYS_NA_ERROR(
+        poll, error, ret, "Could not process retried msgs");
+
+    if (count_p != NULL)
+        *count_p = count;
+
+    return NA_SUCCESS;
+
+error:
+    return ret;
+}
+
+/*---------------------------------------------------------------------------*/
+static na_return_t
+na_sm_poll_wait(na_class_t *na_class, na_context_t *context,
+    unsigned int timeout_ms, unsigned int *count_p)
 {
     struct na_sm_endpoint *na_sm_endpoint = &NA_SM_CLASS(na_class)->endpoint;
     hg_time_t deadline, now = hg_time_from_ms(0);
@@ -5093,17 +5126,17 @@ na_sm_progress(
     deadline = hg_time_add(now, hg_time_from_ms(timeout_ms));
 
     do {
-        bool progressed = false;
+        unsigned int count = 0;
 
         if (na_sm_endpoint->poll_set) {
             /* Make blocking progress */
-            ret = na_sm_poll_wait(context, na_sm_endpoint,
-                hg_time_to_ms(hg_time_subtract(deadline, now)), &progressed);
+            ret = na_sm_progress_wait(context, na_sm_endpoint,
+                hg_time_to_ms(hg_time_subtract(deadline, now)), &count);
             NA_CHECK_SUBSYS_NA_ERROR(poll, error, ret,
                 "Could not make blocking progress on context");
         } else {
             /* Make non-blocking progress */
-            ret = na_sm_poll(na_sm_endpoint, &progressed);
+            ret = na_sm_progress(na_sm_endpoint, &count);
             NA_CHECK_SUBSYS_NA_ERROR(poll, error, ret,
                 "Could not make non-blocking progress on context");
         }
@@ -5113,8 +5146,11 @@ na_sm_progress(
         NA_CHECK_SUBSYS_NA_ERROR(
             poll, error, ret, "Could not process retried msgs");
 
-        if (progressed)
+        if (count > 0) {
+            if (count_p != NULL)
+                *count_p = count;
             return NA_SUCCESS;
+        }
 
         if (timeout_ms != 0)
             hg_time_get_current_ms(&now);
@@ -5181,8 +5217,7 @@ na_sm_cancel(
             /* If being retried by process_retries() in the meantime, we'll just
              * let it cancel there */
             if (!(hg_atomic_get32(&na_sm_op_id->status) & NA_SM_OP_RETRYING)) {
-                HG_QUEUE_REMOVE(
-                    &op_queue->queue, na_sm_op_id, na_sm_op_id, entry);
+                TAILQ_REMOVE(&op_queue->queue, na_sm_op_id, entry);
                 hg_atomic_and32(&na_sm_op_id->status, ~NA_SM_OP_QUEUED);
                 canceled = true;
             }

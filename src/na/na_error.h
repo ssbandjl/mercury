@@ -17,38 +17,45 @@
 /* Default log outlet */
 extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(na);
 
-/* Fatal log outlet always 'on' by default */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(fatal);
-
 /* Specific outlets */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(cls);       /* Class */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(ctx);       /* Context */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(op);        /* Operations */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(addr);      /* Addresses */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(msg);       /* Messages */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(mem);       /* Memory */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(rma);       /* RMA */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(poll);      /* Progress */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(poll_loop); /* Progress loop */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(ip);        /* IP res */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(perf); /* Perf related log */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(cls, na); /* Class */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(ctx, na); /* Context */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(op, na);  /* Operations */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(addr, na); /* Addresses */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(msg, na);  /* Messages */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(mem, na);  /* Memory */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(rma, na);  /* RMA */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(poll, na); /* Progress */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(
+    poll_loop, na); /* Progress loop */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(ip, na); /* IP res */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(
+    perf, na); /* Perf related log */
 
 /* Plugin specific log (must be declared here to prevent contructor issues) */
-extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(
+    libfabric, na); /* Libfabric log */
+extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_SUBSYS_DECL(ucx, na); /* UCX log */
 
 /* Base log macros */
+#define NA_LOG_FATAL(...) HG_LOG_WRITE(na, HG_LOG_LEVEL_FATAL, __VA_ARGS__)
+#define NA_LOG_SUBSYS_FATAL(subsys, ...)                                       \
+    HG_LOG_SUBSYS_WRITE(subsys, na, HG_LOG_LEVEL_FATAL, __VA_ARGS__)
 #define NA_LOG_ERROR(...) HG_LOG_WRITE(na, HG_LOG_LEVEL_ERROR, __VA_ARGS__)
 #define NA_LOG_SUBSYS_ERROR(subsys, ...)                                       \
-    HG_LOG_WRITE(subsys, HG_LOG_LEVEL_ERROR, __VA_ARGS__)
+    HG_LOG_SUBSYS_WRITE(subsys, na, HG_LOG_LEVEL_ERROR, __VA_ARGS__)
 #define NA_LOG_WARNING(...) HG_LOG_WRITE(na, HG_LOG_LEVEL_WARNING, __VA_ARGS__)
 #define NA_LOG_SUBSYS_WARNING(subsys, ...)                                     \
-    HG_LOG_WRITE(subsys, HG_LOG_LEVEL_WARNING, __VA_ARGS__)
+    HG_LOG_SUBSYS_WRITE(subsys, na, HG_LOG_LEVEL_WARNING, __VA_ARGS__)
+#define NA_LOG_INFO(...) HG_LOG_WRITE(na, HG_LOG_LEVEL_INFO, __VA_ARGS__)
+#define NA_LOG_SUBSYS_INFO(subsys, ...)                                        \
+    HG_LOG_SUBSYS_WRITE(subsys, na, HG_LOG_LEVEL_INFO, __VA_ARGS__)
 #ifdef NA_HAS_DEBUG
 #    define NA_LOG_DEBUG(...) HG_LOG_WRITE(na, HG_LOG_LEVEL_DEBUG, __VA_ARGS__)
 #    define NA_LOG_SUBSYS_DEBUG(subsys, ...)                                   \
-        HG_LOG_WRITE(subsys, HG_LOG_LEVEL_DEBUG, __VA_ARGS__)
+        HG_LOG_SUBSYS_WRITE(subsys, na, HG_LOG_LEVEL_DEBUG, __VA_ARGS__)
 #    define NA_LOG_SUBSYS_DEBUG_EXT(subsys, header, ...)                       \
-        HG_LOG_WRITE_DEBUG_EXT(subsys, header, __VA_ARGS__)
+        HG_LOG_SUBSYS_WRITE_DEBUG_EXT(subsys, na, header, __VA_ARGS__)
 #else
 #    define NA_LOG_DEBUG(...)            (void) 0
 #    define NA_LOG_SUBSYS_DEBUG(...)     (void) 0
@@ -73,6 +80,14 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         goto label;                                                            \
     } while (0)
 
+/* NA_GOTO_FATAL: goto label wrapper and set return value / log error */
+#define NA_GOTO_FATAL(label, ret, err_val, ...)                                \
+    do {                                                                       \
+        NA_LOG_FATAL(__VA_ARGS__);                                             \
+        ret = err_val;                                                         \
+        goto label;                                                            \
+    } while (0)
+
 /* NA_GOTO_ERROR: goto label wrapper and set return value / log error */
 #define NA_GOTO_ERROR(label, ret, err_val, ...)                                \
     do {                                                                       \
@@ -81,11 +96,28 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         goto label;                                                            \
     } while (0)
 
-/* NA_GOTO_ERROR: goto label wrapper and set return value / log subsys error */
+/* NA_GOTO_SUBSYS_FATAL: goto label wrapper and set return value / log subsys
+ * error */
+#define NA_GOTO_SUBSYS_FATAL(subsys, label, ret, err_val, ...)                 \
+    do {                                                                       \
+        NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                              \
+        ret = err_val;                                                         \
+        goto label;                                                            \
+    } while (0)
+
+/* NA_GOTO_SUBSYS_ERROR: goto label wrapper and set return value / log subsys
+ * error */
 #define NA_GOTO_SUBSYS_ERROR(subsys, label, ret, err_val, ...)                 \
     do {                                                                       \
         NA_LOG_SUBSYS_ERROR(subsys, __VA_ARGS__);                              \
         ret = err_val;                                                         \
+        goto label;                                                            \
+    } while (0)
+
+/* NA_GOTO_SUBSYS_FATAL_NORET: goto label wrapper and log subsys error */
+#define NA_GOTO_SUBSYS_FATAL_NORET(subsys, label, ...)                         \
+    do {                                                                       \
+        NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                              \
         goto label;                                                            \
     } while (0)
 
@@ -96,11 +128,29 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         goto label;                                                            \
     } while (0)
 
+/* NA_CHECK_NA_FATAL: NA type error check */
+#define NA_CHECK_NA_FATAL(label, na_ret, ...)                                  \
+    do {                                                                       \
+        if (unlikely(na_ret != NA_SUCCESS)) {                                  \
+            NA_LOG_FATAL(__VA_ARGS__);                                         \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
 /* NA_CHECK_NA_ERROR: NA type error check */
 #define NA_CHECK_NA_ERROR(label, na_ret, ...)                                  \
     do {                                                                       \
         if (unlikely(na_ret != NA_SUCCESS)) {                                  \
             NA_LOG_ERROR(__VA_ARGS__);                                         \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
+/* NA_CHECK_SUBSYS_NA_FATAL: subsys NA type error check */
+#define NA_CHECK_SUBSYS_NA_FATAL(subsys, label, na_ret, ...)                   \
+    do {                                                                       \
+        if (unlikely(na_ret != NA_SUCCESS)) {                                  \
+            NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                          \
             goto label;                                                        \
         }                                                                      \
     } while (0)
@@ -114,11 +164,31 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         }                                                                      \
     } while (0)
 
+/* NA_CHECK_FATAL: error check on cond */
+#define NA_CHECK_FATAL(cond, label, ret, err_val, ...)                         \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_FATAL(__VA_ARGS__);                                         \
+            ret = err_val;                                                     \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
 /* NA_CHECK_ERROR: error check on cond */
 #define NA_CHECK_ERROR(cond, label, ret, err_val, ...)                         \
     do {                                                                       \
         if (unlikely(cond)) {                                                  \
             NA_LOG_ERROR(__VA_ARGS__);                                         \
+            ret = err_val;                                                     \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
+/* NA_CHECK_SUBSYS_FATAL: subsys error check on cond */
+#define NA_CHECK_SUBSYS_FATAL(subsys, cond, label, ret, err_val, ...)          \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                          \
             ret = err_val;                                                     \
             goto label;                                                        \
         }                                                                      \
@@ -134,11 +204,29 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         }                                                                      \
     } while (0)
 
+/* NA_CHECK_FATAL_NORET: error check / no return values */
+#define NA_CHECK_FATAL_NORET(cond, label, ...)                                 \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_FATAL(__VA_ARGS__);                                         \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
 /* NA_CHECK_ERROR_NORET: error check / no return values */
 #define NA_CHECK_ERROR_NORET(cond, label, ...)                                 \
     do {                                                                       \
         if (unlikely(cond)) {                                                  \
             NA_LOG_ERROR(__VA_ARGS__);                                         \
+            goto label;                                                        \
+        }                                                                      \
+    } while (0)
+
+/* NA_CHECK_SUBSYS_FATAL_NORET: subsys error check / no return values */
+#define NA_CHECK_SUBSYS_FATAL_NORET(subsys, cond, label, ...)                  \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                          \
             goto label;                                                        \
         }                                                                      \
     } while (0)
@@ -152,11 +240,27 @@ extern NA_PLUGIN_VISIBILITY HG_LOG_OUTLET_DECL(libfabric); /* Libfabric log */
         }                                                                      \
     } while (0)
 
+/* NA_CHECK_FATAL_DONE: error check after clean up / done labels */
+#define NA_CHECK_FATAL_DONE(cond, ...)                                         \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_FATAL(__VA_ARGS__);                                         \
+        }                                                                      \
+    } while (0)
+
 /* NA_CHECK_ERROR_DONE: error check after clean up / done labels */
 #define NA_CHECK_ERROR_DONE(cond, ...)                                         \
     do {                                                                       \
         if (unlikely(cond)) {                                                  \
             NA_LOG_ERROR(__VA_ARGS__);                                         \
+        }                                                                      \
+    } while (0)
+
+/* NA_CHECK_SUBSYS_FATAL_DONE: subsys error check after clean up labels */
+#define NA_CHECK_SUBSYS_FATAL_DONE(subsys, cond, ...)                          \
+    do {                                                                       \
+        if (unlikely(cond)) {                                                  \
+            NA_LOG_SUBSYS_FATAL(subsys, __VA_ARGS__);                          \
         }                                                                      \
     } while (0)
 

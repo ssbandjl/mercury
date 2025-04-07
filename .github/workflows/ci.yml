@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CLANG_FORMAT_VERSION: 12
+      CLANG_FORMAT_VERSION: 18
 
     steps:
       - name: Checkout source
@@ -70,8 +70,8 @@ jobs:
           }
           - {
               os: ubuntu-latest,
-              cc: icc,
-              cxx: icpc
+              cc: icx,
+              cxx: icpx
             }
           - {
               os: macos-latest,
@@ -81,27 +81,43 @@ jobs:
         build_type: [Debug, RelWithDebInfo, Release]
         libs: [shared]
         plugins: [static_plugins]
+        encoding: [xdr_off]
         include:
           - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
             build_type: Debug
             libs: static
             plugins: static_plugins
+            encoding: xdr_off
           - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
             build_type: Asan
             libs: shared
             plugins: static_plugins
+            encoding: xdr_off
           - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
             build_type: Tsan
             libs: shared
             plugins: static_plugins
+            encoding: xdr_off
           - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
             build_type: Ubsan
             libs: shared
             plugins: static_plugins
+            encoding: xdr_off
           - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
             build_type: RelWithDebInfo
             libs: shared
             plugins: dynamic_plugins
+            encoding: xdr_off
+          - config: {os: ubuntu-latest, cc: gcc, cxx: g++}
+            build_type: RelWithDebInfo
+            libs: shared
+            plugins: static_plugins
+            encoding: xdr_on
+          - config: {os: macos-latest, cc: clang, cxx: clang++}
+            build_type: RelWithDebInfo
+            libs: shared
+            plugins: static_plugins
+            encoding: xdr_on
 
     runs-on: ${{ matrix.config.os }}
 
@@ -110,10 +126,11 @@ jobs:
       MERCURY_BUILD_CONFIGURATION: ${{ matrix.build_type }}
       MERCURY_LIBS: ${{ matrix.libs }}
       MERCURY_PLUGINS: ${{ matrix.plugins }}
+      MERCURY_ENCODING: ${{ matrix.encoding }}
       CC: ${{ matrix.config.cc }}
       CXX: ${{ matrix.config.cxx }}
       INSTALL_DIR: install
-      ICC_COMPONENTS: intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic
+      ICX_COMPONENTS: intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mpi intel-oneapi-mpi-devel
 
     steps:
       - name: Set up hugepages
@@ -121,6 +138,14 @@ jobs:
         run: |
           sudo sh -c "echo 32 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
           grep Huge /proc/meminfo
+
+      - name: Fix kernel mmap rnd bits
+        if: runner.os == 'Linux'
+        # Asan in llvm 14 provided in ubuntu 22.04 is incompatible with
+        # high-entropy ASLR in much newer kernels that GitHub runners are
+        # using leading to random crashes: https://reviews.llvm.org/D148280
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
       - name: Checkout source
         uses: actions/checkout@v3
         with:
@@ -128,30 +153,31 @@ jobs:
           submodules: true
 
       - name: Setup compiler package dependencies
-        if: matrix.config.cc == 'icc'
+        if: matrix.config.cc == 'icx'
         run: |
           Testing/script/gh_setup_intel_repo_${{ runner.os }}.sh
-          Testing/script/gh_get_pkg_deps_${{ runner.os }}.sh $ICC_COMPONENTS | tee icc_pkg_deps.txt
+          Testing/script/gh_get_pkg_deps_${{ runner.os }}.sh "$ICX_COMPONENTS" | tee icx_pkg_deps.txt
 
       - name: Restore cached compiler package dependencies
         id: cache-pkg-deps
-        if: matrix.config.cc == 'icc'
+        if: matrix.config.cc == 'icx'
         uses: actions/cache@v3
         with:
           path: |
-            /opt/intel/oneapi/compiler
-          key: ${{ runner.os }}-${{ env.ICC_COMPONENTS }}-${{ hashFiles('**/icc_pkg_deps.txt') }}-pkg-deps
+            /opt/intel/oneapi
+          key: ${{ runner.os }}-icx-${{ hashFiles('**/icx_pkg_deps.txt') }}-pkg-deps
 
       - name: Install compiler package dependencies
-        if: matrix.config.cc == 'icc' && steps.cache-pkg-deps.outputs.cache-hit != 'true'
-        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh $ICC_COMPONENTS
-
-      - name: Install pkg-config
-        if: runner.os == 'macOS'
-        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh pkg-config
+        if: matrix.config.cc == 'icx' && steps.cache-pkg-deps.outputs.cache-hit != 'true'
+        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh "$ICX_COMPONENTS"
 
       - name: Install MPI package dependencies
-        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh mpich
+        if: matrix.config.cc != 'icx' && runner.os == 'Linux' 
+        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh libhwloc-dev
+
+      - name: Setup XDR package dependencies
+        if: matrix.encoding == 'xdr_on' && runner.os == 'Linux'
+        run: Testing/script/gh_install_pkg_deps_${{ runner.os }}.sh libtirpc-dev
 
       - name: Restore cached dependencies
         uses: actions/cache@v3

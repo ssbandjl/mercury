@@ -34,6 +34,17 @@ enum na_addr_format {
     NA_ADDR_NATIVE  /* Use native addressing when available */
 };
 
+/* Traffic class */
+enum na_traffic_class {
+    NA_TC_UNSPEC,           /* Leave it upon plugin to choose */
+    NA_TC_BEST_EFFORT,      /* Best effort */
+    NA_TC_LOW_LATENCY,      /* Low latency */
+    NA_TC_BULK_DATA,        /* Bulk data */
+    NA_TC_DEDICATED_ACCESS, /* High priority */
+    NA_TC_SCAVENGER,        /* Low priority */
+    NA_TC_NETWORK_CTRL      /* Privileged network management */
+};
+
 /* Memory type */
 enum na_mem_type {
     NA_MEM_TYPE_HOST, /*!< Default system memory */
@@ -84,6 +95,22 @@ struct na_init_info {
     /* Request support for tranfers to/from memory devices (e.g., GPU, etc).
      * Default is: false. */
     bool request_mem_device;
+
+    /* Preferred traffic class. Default is NA_TC_UNSPEC */
+    enum na_traffic_class traffic_class;
+};
+
+/* Previous versions of init info to keep compatiblity with older versions */
+struct na_init_info_4_0 {
+    const char *ip_subnet;
+    const char *auth_key;
+    size_t max_unexpected_size;
+    size_t max_expected_size;
+    uint8_t progress_mode;
+    enum na_addr_format addr_format;
+    uint8_t max_contexts;
+    uint8_t thread_mode;
+    bool request_mem_device;
 };
 
 /* Segment */
@@ -125,6 +152,7 @@ struct na_protocol_info {
     X(NA_HOSTUNREACH)    /*!< cannot reach host during operation */            \
     X(NA_TIMEOUT)        /*!< operation reached timeout */                     \
     X(NA_CANCELED)       /*!< operation canceled */                            \
+    X(NA_IO_ERROR)       /*!< I/O error */                                     \
     X(NA_RETURN_MAX)
 
 #define X(a) a,
@@ -188,6 +216,8 @@ typedef void (*na_cb_t)(const struct na_cb_info *callback_info);
 #define NA_VERSION(major, minor) (((major) << 16) | (minor))
 #define NA_MAJOR(version)        (version >> 16)
 #define NA_MINOR(version)        (version & 0xffff)
+#define NA_VERSION_GE(v1, v2)    (v1 >= v2)
+#define NA_VERSION_LT(v1, v2)    (v1 < v2)
 
 /* Optional plugin dependent features that can be queried */
 #define NA_OPT_MULTI_RECV (1 << 0) /* multi-recv */
@@ -235,6 +265,19 @@ typedef void (*na_cb_t)(const struct na_cb_info *callback_info);
 /* NA init info initializer */
 #define NA_INIT_INFO_INITIALIZER                                               \
     ((struct na_init_info){.ip_subnet = NULL,                                  \
+        .auth_key = NULL,                                                      \
+        .max_unexpected_size = 0,                                              \
+        .max_expected_size = 0,                                                \
+        .progress_mode = 0,                                                    \
+        .addr_format = NA_ADDR_UNSPEC,                                         \
+        .max_contexts = 1,                                                     \
+        .thread_mode = 0,                                                      \
+        .request_mem_device = false,                                           \
+        .traffic_class = NA_TC_UNSPEC})
+
+/* NA init info initializer */
+#define NA_INIT_INFO_INITIALIZER_4_0                                           \
+    ((struct na_init_info_4_0){.ip_subnet = NULL,                              \
         .auth_key = NULL,                                                      \
         .max_unexpected_size = 0,                                              \
         .max_expected_size = 0,                                                \

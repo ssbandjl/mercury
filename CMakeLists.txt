@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.12.2 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.12.2...3.15 FATAL_ERROR)
 
 # Setup cmake policies.
 foreach(policy
@@ -178,9 +178,22 @@ endif()
 option(MERCURY_ENABLE_DEBUG "Enable debug statements." ON)
 if(MERCURY_ENABLE_DEBUG)
   set(HG_HAS_DEBUG 1)
+  # Always enable counters if debug is turned ON
+  set(MERCURY_ENABLE_COUNTERS "ON" CACHE BOOL "Enable diagnostics counters (enabled with debug)." FORCE)
 else()
   set(HG_HAS_DEBUG 0)
 endif()
+
+#------------------------------------------------------------------------------
+# Enable diagnostics counters separately from debug.
+#------------------------------------------------------------------------------
+option(MERCURY_ENABLE_COUNTERS "Enable diagnostics counters." OFF)
+if(MERCURY_ENABLE_COUNTERS)
+  set(HG_HAS_DIAG 1)
+else()
+  set(HG_HAS_DIAG 0)
+endif()
+
 
 #-------------------------------------------------------------------------------
 if(${CMAKE_VERSION} VERSION_GREATER 3.14)

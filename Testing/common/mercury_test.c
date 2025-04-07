@@ -9,9 +9,6 @@
 
 #include "mercury_util.h"
 #include "na_test_getopt.h"
-#ifdef HG_TEST_HAS_CRAY_DRC
-#    include <mercury_test_drc.h>
-#endif
 
 #ifdef _WIN32
 #    include <Windows.h>
@@ -39,7 +36,8 @@ hg_test_parse_options(
     int argc, char *argv[], struct hg_test_info *hg_test_info);
 
 static hg_return_t
-hg_test_self_addr_publish(hg_class_t *hg_class, bool append);
+hg_test_self_addr_publish(
+    const char *hostfile, hg_class_t *hg_class, bool append);
 
 /*******************/
 /* Local Variables */
@@ -55,7 +53,7 @@ extern const struct na_test_opt na_test_opt_g[];
 HG_LOG_OUTLET_DECL(hg_test) = HG_LOG_OUTLET_INITIALIZER(
     hg_test, HG_LOG_PASS, NULL, NULL);
 #else
-HG_LOG_SUBSYS_DECL_REGISTER(hg_test, HG_LOG_OUTLET_ROOT_NAME);
+HG_LOG_DECL_REGISTER(hg_test);
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -64,11 +62,12 @@ hg_test_usage(const char *execname)
 {
     na_test_usage(execname);
     printf("    HG OPTIONS\n");
-    printf("    -a, --auth          Run auth key service\n");
     printf("    -x, --handle        Max number of handles\n");
     printf("    -m, --memory        Use shared-memory with local targets\n");
     printf("    -t, --threads       Number of server threads\n");
     printf("    -B, --bidirectional Bidirectional communication\n");
+    printf("    -u, --mrecv-ops     Number of multi-recv ops (server only)\n");
+    printf("    -i, --post-init     Number of handles posted (server only)\n");
 }
 
 /*---------------------------------------------------------------------------*/
@@ -89,14 +88,6 @@ hg_test_parse_options(int argc, char *argv[], struct hg_test_info *hg_test_info)
             case 'h':
                 hg_test_usage(argv[0]);
                 exit(1);
-            case 'a': /* auth service */
-                hg_test_info->auth = HG_TRUE;
-                break;
-#ifdef HG_TEST_HAS_CRAY_DRC
-            case 'k': /* auth key */
-                hg_test_info->credential = (uint32_t) atoi(na_test_opt_arg_g);
-#endif
-                break;
             case 'm': /* memory */
                 hg_test_info->auto_sm = HG_TRUE;
                 break;
@@ -110,6 +101,14 @@ hg_test_parse_options(int argc, char *argv[], struct hg_test_info *hg_test_info)
                 break;
             case 'B': /* bidirectional */
                 hg_test_info->bidirectional = HG_TRUE;
+                break;
+            case 'u': /* multi_recv_op_max */
+                hg_test_info->multi_recv_op_max =
+                    (unsigned int) atoi(na_test_opt_arg_g);
+                break;
+            case 'i': /* request_post_init */
+                hg_test_info->request_post_init =
+                    (unsigned int) atoi(na_test_opt_arg_g);
                 break;
             default:
                 break;
@@ -134,7 +133,8 @@ hg_test_parse_options(int argc, char *argv[], struct hg_test_info *hg_test_info)
 
 /*---------------------------------------------------------------------------*/
 static hg_return_t
-hg_test_self_addr_publish(hg_class_t *hg_class, bool append)
+hg_test_self_addr_publish(
+    const char *hostfile, hg_class_t *hg_class, bool append)
 {
     char addr_string[NA_TEST_MAX_ADDR_NAME];
     hg_size_t addr_string_len = NA_TEST_MAX_ADDR_NAME;
@@ -155,7 +155,7 @@ hg_test_self_addr_publish(hg_class_t *hg_class, bool append)
         error, ret, "HG_Addr_free() failed (%s)", HG_Error_to_string(ret));
     self_addr = HG_ADDR_NULL;
 
-    na_ret = na_test_set_config(addr_string, append);
+    na_ret = na_test_set_config(hostfile, addr_string, append);
     NA_TEST_CHECK_ERROR(na_ret != NA_SUCCESS, error, ret, (hg_return_t) na_ret,
         "na_test_set_config() failed (%s)", NA_Error_to_string(na_ret));
 
@@ -193,19 +193,6 @@ HG_Test_init(int argc, char *argv[], struct hg_test_info *hg_test_info)
     /* Get HG test options */
     hg_test_parse_options(argc, argv, hg_test_info);
 
-    if (hg_test_info->auth) {
-#ifdef HG_TEST_HAS_CRAY_DRC
-        char hg_test_drc_key[NA_TEST_MAX_ADDR_NAME] = {'\0'};
-
-        ret = hg_test_drc_acquire(argc, argv, hg_test_info);
-        HG_TEST_CHECK_HG_ERROR(error, ret, "hg_test_drc_acquire() failed (%s)",
-            HG_Error_to_string(ret));
-
-        sprintf(hg_test_drc_key, "%u", hg_test_info->cookie);
-        hg_test_info->na_test_info.key = strdup(hg_test_drc_key);
-#endif
-    }
-
     /* Initialize NA test layer */
     hg_test_info->na_test_info.extern_init = true;
     na_ret = NA_Test_init(argc, argv, &hg_test_info->na_test_info);
@@ -237,6 +224,10 @@ HG_Test_init(int argc, char *argv[], struct hg_test_info *hg_test_info)
 
         /* Multi-recv */
         hg_init_info.no_multi_recv = hg_test_info->na_test_info.no_multi_recv;
+        hg_init_info.multi_recv_op_max = hg_test_info->multi_recv_op_max;
+
+        /* Post init */
+        hg_init_info.request_post_init = hg_test_info->request_post_init;
 
         /* Init HG with init options */
         hg_test_info->hg_classes[i] =
@@ -248,26 +239,23 @@ HG_Test_init(int argc, char *argv[], struct hg_test_info *hg_test_info)
     hg_test_info->hg_class = hg_test_info->hg_classes[0]; /* default */
 
     if (hg_test_info->na_test_info.listen) {
-#ifdef HG_TEST_HAS_PARALLEL
         int j;
-        for (j = 0; j < hg_test_info->na_test_info.mpi_comm_size; j++) {
-            if (hg_test_info->na_test_info.mpi_comm_rank == j) {
-#endif
+        for (j = 0; j < hg_test_info->na_test_info.mpi_info.size; j++) {
+            if (hg_test_info->na_test_info.mpi_info.rank == j) {
                 for (i = 0; i < hg_test_info->na_test_info.max_classes; i++) {
-                    ret = hg_test_self_addr_publish(hg_test_info->hg_classes[i],
-                        i > 0 || hg_test_info->na_test_info.mpi_comm_rank != 0);
+                    ret = hg_test_self_addr_publish(
+                        hg_test_info->na_test_info.hostfile,
+                        hg_test_info->hg_classes[i],
+                        i > 0 || hg_test_info->na_test_info.mpi_info.rank != 0);
                     HG_TEST_CHECK_HG_ERROR(
                         error, ret, "hg_test_self_addr_publish() failed");
                 }
-
-#ifdef HG_TEST_HAS_PARALLEL
             }
             NA_Test_barrier(&hg_test_info->na_test_info);
         }
         /* If static client, must wait for server to write config file */
         if (hg_test_info->na_test_info.mpi_static)
-            MPI_Barrier(MPI_COMM_WORLD);
-#endif
+            na_test_mpi_barrier_world();
     }
 
     return HG_SUCCESS;
@@ -302,14 +290,6 @@ HG_Test_finalize(struct hg_test_info *hg_test_info)
     na_ret = NA_Test_finalize(&hg_test_info->na_test_info);
     HG_TEST_CHECK_ERROR(na_ret != NA_SUCCESS, done, ret, (hg_return_t) na_ret,
         "NA_Test_finalize() failed (%s)", NA_Error_to_string(na_ret));
-
-    if (hg_test_info->auth) {
-#ifdef HG_TEST_HAS_CRAY_DRC
-        ret = hg_test_drc_release(hg_test_info);
-        HG_TEST_CHECK_HG_ERROR(done, ret, "hg_test_drc_release() failed (%s)",
-            HG_Error_to_string(ret));
-#endif
-    }
 
 done:
     return ret;

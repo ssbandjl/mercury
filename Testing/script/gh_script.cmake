@@ -77,12 +77,13 @@ if(APPLE)
 else()
   # Disable sockets with Tsan builds (OFI issues)
   if(MERCURY_BUILD_CONFIGURATION MATCHES "Tsan")
-    set(OFI_PROTOCOLS "tcp")
+    set(OFI_PROTOCOLS "tcp;tcp_rxm")
+    set(ENV{FI_PROVIDER} "tcp") # ensure MPI uses tcp
   else()
-    set(OFI_PROTOCOLS "sockets;tcp")
+    set(OFI_PROTOCOLS "sockets;tcp;tcp_rxm")
   endif()
 endif()
-set(UCX_PROTOCOLS "tcp")
+set(UCX_PROTOCOLS "tcp;all")
 
 # MERCURY_DASHBOARD_MODEL=Experimental | Nightly | Continuous
 if(NOT DEFINED dashboard_model)
@@ -197,6 +198,12 @@ endif()
 if(NOT build_shared_libs)
   set(lower_mercury_build_configuration ${lower_mercury_build_configuration}-static)
 endif()
+if(build_dynamic_plugins)
+  set(lower_mercury_build_configuration ${lower_mercury_build_configuration}-plugin)
+endif()
+if(build_xdr)
+  set(lower_mercury_build_configuration ${lower_mercury_build_configuration}-xdr)
+endif()
 
 set(CTEST_BUILD_NAME "${BUILD_NAME}-${OS_NAME}-$ENV{CC}-${lower_mercury_build_configuration}-${BUILD_NUMBER}")
 
@@ -241,8 +248,8 @@ if($ENV{CC} MATCHES "^clang.*")
   set(MERCURY_C_FLAGS "-Wall -Wthread-safety -Wextra -Wshadow -Winline -Wundef -Wcast-qual -Wconversion -Wmissing-prototypes -pedantic -Wpointer-arith -Wformat=2 -std=gnu11")
   set(USE_MPI OFF) # MPICH configure issue on Ubuntu 22.04
 endif()
-if($ENV{CC} MATCHES "^icc.*")
-  set(MERCURY_C_FLAGS "-diag-disable=10441 -Wall -Wextra -Wshadow -Winline -Wundef -Wcast-qual -Wconversion -Wmissing-prototypes -pedantic -Wpointer-arith -Wformat=2 -std=gnu11")
+if($ENV{CC} MATCHES "^icx.*")
+  set(MERCURY_C_FLAGS "-Wall -Wextra -Wshadow -Winline -Wundef -Wcast-qual -Wconversion -Wmissing-prototypes -pedantic -Wpointer-arith -Wformat=2 -std=gnu11")
 endif()
 set(MERCURY_C_FLAGS ${MERCURY_C_FLAGS})
 set(MERCURY_CXX_FLAGS ${MERCURY_CXX_FLAGS})
@@ -264,14 +271,13 @@ MERCURY_ENABLE_COVERAGE:BOOL=${MERCURY_DO_COVERAGE}
 MERCURY_ENABLE_DEBUG:BOOL=${enable_debug}
 MERCURY_USE_BOOST_PP:BOOL=OFF
 MERCURY_USE_CHECKSUMS:BOOL=${USE_CHECKSUMS}
-MERCURY_USE_XDR:BOOL=OFF
+MERCURY_USE_XDR:BOOL=${build_xdr}
 NA_USE_DYNAMIC_PLUGINS:BOOL=${build_dynamic_plugins}
 NA_DEFAULT_PLUGIN_PATH:PATH=${CTEST_BINARY_DIRECTORY}/bin
 NA_USE_BMI:BOOL=${USE_BMI}
 BMI_INCLUDE_DIR:PATH=$ENV{DEPS_PREFIX}/include
 BMI_LIBRARY:FILEPATH=$ENV{DEPS_PREFIX}/lib/libbmi.${SOEXT}
 NA_USE_MPI:BOOL=${USE_MPI}
-NA_USE_CCI:BOOL=OFF
 NA_USE_SM:BOOL=${USE_SM}
 NA_USE_OFI:BOOL=${USE_OFI}
 NA_OFI_TESTING_PROTOCOL:STRING=${OFI_PROTOCOLS}

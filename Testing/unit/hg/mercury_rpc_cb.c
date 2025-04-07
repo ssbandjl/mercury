@@ -183,6 +183,25 @@ HG_TEST_RPC_CB(hg_test_rpc_open, handle)
     int event_id;
     int open_ret;
     hg_return_t ret = HG_SUCCESS;
+    struct hg_unit_info *info = (struct hg_unit_info *) HG_Class_get_data(
+        HG_Get_info(handle)->hg_class);
+    hg_size_t payload_size = HG_Get_input_payload_size(handle);
+#ifdef HG_HAS_XDR
+    size_t expected_string_payload_size =     /* note xdr rounding rules */
+        sizeof(uint64_t) +                    /* length */
+        RNDUP(strlen(HG_TEST_RPC_PATH) + 1) + /* string data, inc \0 at end */
+        RNDUP(sizeof(uint8_t)) +              /* is_const */
+        RNDUP(sizeof(uint8_t));               /* is_owned */
+#else
+    size_t expected_string_payload_size =
+        strlen(HG_TEST_RPC_PATH) + sizeof(uint64_t) + 3;
+#endif
+
+    HG_TEST_CHECK_ERROR(
+        payload_size != sizeof(rpc_handle_t) + expected_string_payload_size,
+        done, ret, HG_FAULT,
+        "invalid input payload size (%" PRId64 "), expected (%zu)",
+        payload_size, sizeof(rpc_handle_t) + expected_string_payload_size);
 
     /* Get input buffer */
     ret = HG_Get_input(handle, &in_struct);
@@ -209,6 +228,15 @@ HG_TEST_RPC_CB(hg_test_rpc_open, handle)
     ret = HG_Respond(handle, NULL, NULL, &out_struct);
     HG_TEST_CHECK_HG_ERROR(
         done, ret, "HG_Respond() failed (%s)", HG_Error_to_string(ret));
+
+    /* Skip check when sending to ourselves to prevent race */
+    if (!info->hg_test_info.na_test_info.self_send) {
+        payload_size = HG_Get_output_payload_size(handle);
+        HG_TEST_CHECK_ERROR(payload_size != sizeof(rpc_open_out_t), done, ret,
+            HG_FAULT,
+            "invalid output payload size (%" PRId64 "), expected (%zu)",
+            payload_size, sizeof(rpc_open_out_t));
+    }
 
 done:
     ret = HG_Destroy(handle);

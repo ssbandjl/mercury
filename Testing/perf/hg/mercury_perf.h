@@ -12,7 +12,7 @@
 
 #include "mercury_bulk.h"
 #include "mercury_param.h"
-#include "mercury_request.h" /* For convenience */
+#include "mercury_poll.h"
 #include "mercury_time.h"
 
 #include <stdlib.h>
@@ -25,6 +25,7 @@
 enum hg_perf_rpc_id {
     HG_PERF_RATE_INIT = 1,
     HG_PERF_RATE,
+    HG_PERF_FIRST,
     HG_PERF_BW_INIT,
     HG_PERF_BW_READ,
     HG_PERF_BW_WRITE,
@@ -38,23 +39,25 @@ struct hg_perf_info {
 };
 
 struct hg_perf_class_info {
-    hg_class_t *hg_class;              /* HG class */
-    hg_context_t *context;             /* HG context */
-    hg_request_class_t *request_class; /* Request class */
-    hg_addr_t *target_addrs;           /* Target addresses */
-    hg_handle_t *handles;              /* Handles */
+    hg_class_t *hg_class;    /* HG class */
+    hg_context_t *context;   /* HG context */
+    hg_poll_set_t *poll_set; /* Poll set */
+    hg_addr_t *target_addrs; /* Target addresses */
+    hg_handle_t *handles;    /* Handles */
     void *rpc_buf;
     void *rpc_verify_buf;
     void **bulk_bufs;
     size_t bulk_count;
     size_t target_addr_max;
     size_t handle_max;
-    size_t handle_per_rank;
+    size_t handle_target;
     size_t buf_size_min;
     size_t buf_size_max;
     hg_bulk_t *local_bulk_handles;
     hg_bulk_t *remote_bulk_handles;
-    hg_request_t *request; /* Request */
+    int wait_fd;             /* Wait fd */
+    hg_time_t spin_deadline; /* Spin deadline */
+    bool spin_flag;          /* Spin flag */
     int class_id;
     bool done;
     bool verify;
@@ -62,9 +65,9 @@ struct hg_perf_class_info {
 };
 
 struct hg_perf_request {
-    int32_t expected_count; /* Expected count */
-    int32_t complete_count; /* Completed count */
-    hg_request_t *request;  /* Request */
+    int32_t expected_count;      /* Expected count */
+    int32_t complete_count;      /* Completed count */
+    hg_atomic_int32_t completed; /* Request */
 };
 
 struct hg_perf_bulk_init_info {
@@ -74,13 +77,13 @@ struct hg_perf_bulk_init_info {
     uint32_t handle_max;
     uint32_t bulk_count;
     uint32_t size_max;
-    uint32_t comm_rank;
     uint32_t comm_size;
+    uint32_t target_rank;
     uint32_t target_addr_max;
 };
 
 struct hg_perf_bulk_info {
-    uint32_t comm_rank; /* Source rank */
+    hg_bulk_t bulk;     /* Bulk handle */
     uint32_t handle_id; /* Source handle ID */
     uint32_t size;      /* Transfer size*/
 };
@@ -102,17 +105,26 @@ extern "C" {
 #endif
 
 hg_return_t
+hg_perf_request_wait(struct hg_perf_class_info *info,
+    struct hg_perf_request *request, unsigned int timeout_ms,
+    unsigned int *completed_p);
+
+hg_return_t
+hg_perf_request_complete(const struct hg_cb_info *hg_cb_info);
+
+hg_return_t
 hg_perf_init(int argc, char *argv[], bool listen, struct hg_perf_info *info);
 
 void
 hg_perf_cleanup(struct hg_perf_info *info);
 
 hg_return_t
-hg_perf_set_handles(
+hg_perf_set_handles(const struct hg_test_info *hg_test_info,
     struct hg_perf_class_info *info, enum hg_perf_rpc_id rpc_id);
 
 hg_return_t
-hg_perf_rpc_buf_init(struct hg_perf_class_info *info);
+hg_perf_rpc_buf_init(
+    const struct hg_test_info *hg_test_info, struct hg_perf_class_info *info);
 
 hg_return_t
 hg_perf_bulk_buf_init(const struct hg_test_info *hg_test_info,
@@ -130,15 +142,21 @@ hg_perf_print_lat(const struct hg_test_info *hg_test_info,
     const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t);
 
 void
+hg_perf_print_header_time(const struct hg_test_info *hg_test_info,
+    const struct hg_perf_class_info *info, const char *benchmark);
+
+void
+hg_perf_print_time(const struct hg_test_info *hg_test_info,
+    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t);
+
+void
 hg_perf_print_header_bw(const struct hg_test_info *hg_test_info,
     const struct hg_perf_class_info *info, const char *benchmark);
 
 void
 hg_perf_print_bw(const struct hg_test_info *hg_test_info,
-    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t);
-
-hg_return_t
-hg_perf_request_complete(const struct hg_cb_info *hg_cb_info);
+    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t,
+    hg_time_t t_reg, hg_time_t t_dereg);
 
 hg_return_t
 hg_perf_send_done(struct hg_perf_class_info *info);

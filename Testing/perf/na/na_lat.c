@@ -31,20 +31,24 @@ na_perf_run(struct na_perf_info *info, size_t buf_size, size_t skip);
 static na_return_t
 na_perf_send_init(struct na_perf_info *info)
 {
+    struct na_perf_request_info request_info = {
+        .completed = HG_ATOMIC_VAR_INIT(0),
+        .complete_count = 0,
+        .expected_count = (int32_t) 1};
     na_return_t ret;
-
-    /* Reset */
-    hg_request_reset(info->request);
 
     /* Post one-way msg send */
     ret = NA_Msg_send_unexpected(info->na_class, info->context,
-        na_perf_request_complete, info->request, info->msg_unexp_buf,
+        na_perf_request_complete, &request_info, info->msg_unexp_buf,
         info->msg_unexp_header_size, info->msg_unexp_data, info->target_addr, 0,
         NA_PERF_TAG_LAT_INIT, info->msg_unexp_op_id);
     NA_TEST_CHECK_NA_ERROR(error, ret, "NA_Msg_send_unexpected() failed (%s)",
         NA_Error_to_string(ret));
 
-    hg_request_wait(info->request, NA_MAX_IDLE_TIME, NULL);
+    /* Wait for completion */
+    ret = na_perf_request_wait(info, &request_info, NA_MAX_IDLE_TIME, NULL);
+    NA_TEST_CHECK_NA_ERROR(error, ret, "na_perf_request_wait() failed (%s)",
+        NA_Error_to_string(ret));
 
     return NA_SUCCESS;
 
@@ -62,13 +66,13 @@ na_perf_run(struct na_perf_info *info, size_t buf_size, size_t skip)
 
     /* Actual benchmark */
     for (i = 0; i < skip + (size_t) info->na_test_info.loop; i++) {
-        if (i == skip) {
-            if (info->na_test_info.mpi_comm_size > 1)
-                NA_Test_barrier(&info->na_test_info);
-            hg_time_get_current(&t1);
-        }
+        struct na_perf_request_info request_info = {
+            .completed = HG_ATOMIC_VAR_INIT(0),
+            .complete_count = 0,
+            .expected_count = (int32_t) 2};
 
-        hg_request_reset(info->request);
+        if (i == skip)
+            hg_time_get_current(&t1);
 
         if (info->na_test_info.verify) {
             memset(info->msg_exp_buf, 0, buf_size);
@@ -82,20 +86,24 @@ na_perf_run(struct na_perf_info *info, size_t buf_size, size_t skip)
 
         /* Post recv */
         ret = NA_Msg_recv_expected(info->na_class, info->context,
-            na_perf_request_complete, info->request, info->msg_exp_buf,
+            na_perf_request_complete, &request_info, info->msg_exp_buf,
             buf_size, info->msg_exp_data, info->target_addr, 0, NA_PERF_TAG_LAT,
             info->msg_exp_op_id);
         NA_TEST_CHECK_NA_ERROR(error, ret, "NA_Msg_recv_expected() failed (%s)",
             NA_Error_to_string(ret));
 
         /* Post send */
-        ret = NA_Msg_send_unexpected(info->na_class, info->context, NULL, NULL,
-            info->msg_unexp_buf, buf_size, info->msg_unexp_data,
-            info->target_addr, 0, NA_PERF_TAG_LAT, info->msg_unexp_op_id);
+        ret = NA_Msg_send_unexpected(info->na_class, info->context,
+            na_perf_request_complete, &request_info, info->msg_unexp_buf,
+            buf_size, info->msg_unexp_data, info->target_addr, 0,
+            NA_PERF_TAG_LAT, info->msg_unexp_op_id);
         NA_TEST_CHECK_NA_ERROR(error, ret,
             "NA_Msg_send_unexpected() failed (%s)", NA_Error_to_string(ret));
 
-        hg_request_wait(info->request, NA_MAX_IDLE_TIME, NULL);
+        /* Wait for completion */
+        ret = na_perf_request_wait(info, &request_info, NA_MAX_IDLE_TIME, NULL);
+        NA_TEST_CHECK_NA_ERROR(error, ret, "na_perf_request_wait() failed (%s)",
+            NA_Error_to_string(ret));
 
         if (info->na_test_info.verify) {
             ret = na_perf_verify_data(
@@ -105,13 +113,9 @@ na_perf_run(struct na_perf_info *info, size_t buf_size, size_t skip)
         }
     }
 
-    if (info->na_test_info.mpi_comm_size > 1)
-        NA_Test_barrier(&info->na_test_info);
-
     hg_time_get_current(&t2);
 
-    if (info->na_test_info.mpi_comm_rank == 0)
-        na_perf_print_lat(info, buf_size, hg_time_subtract(t2, t1));
+    na_perf_print_lat(info, buf_size, hg_time_subtract(t2, t1));
 
     return NA_SUCCESS;
 
@@ -135,15 +139,13 @@ main(int argc, char *argv[])
     /* Init data */
     na_perf_init_data(info.msg_unexp_buf, info.msg_unexp_size_max,
         info.msg_unexp_header_size);
-    if (info.na_test_info.mpi_comm_rank == 0)
-        na_perf_send_init(&info);
+    na_perf_send_init(&info);
 
     min_size =
         (info.msg_unexp_header_size > 0) ? info.msg_unexp_header_size : 1;
 
     /* Header info */
-    if (info.na_test_info.mpi_comm_rank == 0)
-        na_perf_print_header_lat(&info, BENCHMARK_NAME, min_size);
+    na_perf_print_header_lat(&info, BENCHMARK_NAME, min_size);
 
     /* Msg with different sizes */
     for (size = min_size; size <= info.msg_unexp_size_max; size *= 2) {
@@ -155,8 +157,7 @@ main(int argc, char *argv[])
     }
 
     /* Finalize interface */
-    if (info.na_test_info.mpi_comm_rank == 0)
-        na_perf_send_finalize(&info);
+    na_perf_send_finalize(&info);
 
     na_perf_cleanup(&info);
 

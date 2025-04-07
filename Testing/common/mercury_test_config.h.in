@@ -52,7 +52,7 @@
 /* Define if has <sys/prctl.h> */
 #cmakedefine HG_TEST_HAS_SYSPRCTL_H
 
-/* Define if has <rdmacred.h> */
-#cmakedefine HG_TEST_HAS_CRAY_DRC
+/* Define if has <libcxi/libcxi.h> */
+#cmakedefine HG_TEST_HAS_CXI
 
 #endif /* MERCURY_TEST_CONFIG_H */

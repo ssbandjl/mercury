@@ -35,7 +35,7 @@
     "." XSTRING(HG_VERSION_MINOR) "." XSTRING(HG_VERSION_PATCH)
 
 #define NDIGITS 2
-#define NWIDTH  27
+#define NWIDTH  24
 
 /************************************/
 /* Local Type and Struct Definition */
@@ -52,12 +52,6 @@ struct iovec {
 /* Local Prototypes */
 /********************/
 
-static int
-hg_perf_request_progress(unsigned int timeout, void *arg);
-
-static int
-hg_perf_request_trigger(unsigned int timeout, unsigned int *flag, void *arg);
-
 static hg_return_t
 hg_perf_class_init(const struct hg_test_info *hg_test_info, int class_id,
     struct hg_perf_class_info *info, hg_class_t *hg_class, bool listen);
@@ -66,8 +60,8 @@ static void
 hg_perf_class_cleanup(struct hg_perf_class_info *info);
 
 static hg_return_t
-hg_perf_bulk_buf_alloc(
-    struct hg_perf_class_info *info, uint8_t bulk_flags, bool init_data);
+hg_perf_bulk_buf_alloc(struct hg_perf_class_info *info, uint8_t bulk_flags,
+    bool init_data, bool bulk_create);
 
 static void
 hg_perf_bulk_buf_free(struct hg_perf_class_info *info);
@@ -94,6 +88,9 @@ static hg_return_t
 hg_perf_rpc_rate_cb(hg_handle_t handle);
 
 static hg_return_t
+hg_perf_first_cb(hg_handle_t handle);
+
+static hg_return_t
 hg_perf_bulk_init_cb(hg_handle_t handle);
 
 static hg_return_t
@@ -115,32 +112,102 @@ hg_perf_done_cb(hg_handle_t handle);
 /* Local Variables */
 /*******************/
 
-/*---------------------------------------------------------------------------*/
-static int
-hg_perf_request_progress(unsigned int timeout, void *arg)
+hg_return_t
+hg_perf_request_wait(struct hg_perf_class_info *info,
+    struct hg_perf_request *request, unsigned int timeout_ms,
+    unsigned int *completed_p)
 {
-    struct hg_perf_class_info *info = (struct hg_perf_class_info *) arg;
+    hg_time_t deadline, now = hg_time_from_ms(0);
+    bool completed = false;
+    hg_return_t ret;
 
-    if (HG_Progress(info->context, timeout) != HG_SUCCESS)
-        return HG_UTIL_FAIL;
+    if (timeout_ms != 0)
+        hg_time_get_current_ms(&now);
+    deadline = hg_time_add(now, hg_time_from_ms(timeout_ms));
 
-    return HG_UTIL_SUCCESS;
+    do {
+        unsigned int count = 0, actual_count = 0;
+
+        if (info->poll_set && timeout_ms != 0) {
+            if (!hg_time_less(now, info->spin_deadline)) {
+                /* Reached spin deadline, reset to force re-evaluation */
+                info->spin_flag = false;
+                info->spin_deadline = hg_time_from_ms(0);
+            }
+
+            if (!info->spin_flag) {
+                if (!HG_Event_ready(info->context)) {
+                    struct hg_poll_event poll_event = {
+                        .events = 0, .data.ptr = NULL};
+                    unsigned int actual_events = 0;
+                    int rc;
+
+                    HG_TEST_LOG_DEBUG("Waiting for %u ms",
+                        hg_time_to_ms(hg_time_subtract(deadline, now)));
+
+                    rc = hg_poll_wait(info->poll_set,
+                        hg_time_to_ms(hg_time_subtract(deadline, now)), 1,
+                        &poll_event, &actual_events);
+                    HG_TEST_CHECK_ERROR(rc != 0, error, ret, HG_PROTOCOL_ERROR,
+                        "hg_poll_wait() failed");
+                    if (actual_events > 0) {
+                        /* If we woke up with an event, set spin flag to true to
+                         * keep spinning for a while until we reach
+                         * spin_deadline or deadline/timeout. */
+                        hg_time_get_current_ms(&now);
+                        info->spin_flag = true;
+                        info->spin_deadline =
+                            hg_time_add(now, hg_time_from_ms(1000));
+                    }
+                } else {
+                    /* If we did not block, set spin flag to true to keep
+                     * spinning until we reach spin_deadline. */
+                    info->spin_flag = true;
+                    info->spin_deadline =
+                        hg_time_add(now, hg_time_from_ms(1000));
+                }
+            }
+        }
+
+        ret = HG_Event_progress(info->context, &count);
+        HG_TEST_CHECK_HG_ERROR(
+            error, ret, "HG_Progress() failed (%s)", HG_Error_to_string(ret));
+
+        if (count == 0)
+            continue;
+
+        ret = HG_Event_trigger(info->context, count, &actual_count);
+        HG_TEST_CHECK_HG_ERROR(
+            error, ret, "HG_Trigger() failed (%s)", HG_Error_to_string(ret));
+
+        if (hg_atomic_get32(&request->completed)) {
+            completed = true;
+            break;
+        }
+
+        if (timeout_ms != 0)
+            hg_time_get_current_ms(&now);
+    } while (hg_time_less(now, deadline));
+
+    if (completed_p != NULL)
+        *completed_p = completed;
+
+    return HG_SUCCESS;
+
+error:
+    return ret;
 }
 
 /*---------------------------------------------------------------------------*/
-static int
-hg_perf_request_trigger(unsigned int timeout, unsigned int *flag, void *arg)
+hg_return_t
+hg_perf_request_complete(const struct hg_cb_info *hg_cb_info)
 {
-    struct hg_perf_class_info *info = (struct hg_perf_class_info *) arg;
-    unsigned int count = 0;
+    struct hg_perf_request *info = (struct hg_perf_request *) hg_cb_info->arg;
 
-    if (HG_Trigger(info->context, timeout, 1, &count) != HG_SUCCESS)
-        return HG_UTIL_FAIL;
+    if ((++info->complete_count) == info->expected_count)
+        hg_atomic_set32(&info->completed, (int32_t) true);
 
-    if (flag)
-        *flag = (count > 0) ? true : false;
-
-    return HG_UTIL_SUCCESS;
+    return HG_SUCCESS;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -216,8 +283,20 @@ hg_perf_class_init(const struct hg_test_info *hg_test_info, int class_id,
         "HG_Context_create() failed");
     (void) HG_Context_set_data(info->context, info, NULL);
 
-    info->request_class = hg_request_init(
-        hg_perf_request_progress, hg_perf_request_trigger, info);
+    info->wait_fd = HG_Event_get_wait_fd(info->context);
+    if (info->wait_fd > 0) {
+        struct hg_poll_event poll_event = {
+            .events = HG_POLLIN, .data.ptr = NULL};
+        int rc;
+
+        info->poll_set = hg_poll_create();
+        HG_TEST_CHECK_ERROR(info->poll_set == NULL, error, ret, HG_NOMEM,
+            "hg_poll_create() failed");
+
+        rc = hg_poll_add(info->poll_set, info->wait_fd, &poll_event);
+        HG_TEST_CHECK_ERROR(
+            rc != 0, error, ret, HG_PROTOCOL_ERROR, "hg_poll_add() failed");
+    }
 
     /* Check that sizes are power of 2 */
     info->buf_size_min = hg_test_info->na_test_info.buf_size_min;
@@ -235,19 +314,34 @@ hg_perf_class_init(const struct hg_test_info *hg_test_info, int class_id,
     /* Register RPCs */
     ret = HG_Register(info->hg_class, HG_PERF_RATE_INIT, NULL, NULL,
         hg_perf_rpc_rate_init_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
 
     ret = HG_Register(info->hg_class, HG_PERF_RATE, hg_perf_proc_iovec,
         (hg_test_info->bidirectional) ? hg_perf_proc_iovec : NULL,
         hg_perf_rpc_rate_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
+
+    ret = HG_Register(
+        info->hg_class, HG_PERF_FIRST, NULL, NULL, hg_perf_first_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
 
     ret = HG_Register(info->hg_class, HG_PERF_BW_INIT,
         hg_perf_proc_bulk_init_info, NULL, hg_perf_bulk_init_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
 
     ret = HG_Register(info->hg_class, HG_PERF_BW_READ, hg_perf_proc_bulk_info,
         NULL, hg_perf_bulk_push_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
 
     ret = HG_Register(info->hg_class, HG_PERF_BW_WRITE, hg_perf_proc_bulk_info,
         NULL, hg_perf_bulk_pull_cb);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Register() failed (%s)", HG_Error_to_string(ret));
 
     ret =
         HG_Register(info->hg_class, HG_PERF_DONE, NULL, NULL, hg_perf_done_cb);
@@ -287,12 +381,12 @@ hg_perf_class_init(const struct hg_test_info *hg_test_info, int class_id,
         /* Bulk count */
         info->bulk_count = hg_test_info->na_test_info.buf_count;
         if (info->bulk_count == 0)
-            info->bulk_count = HG_PERF_BULK_COUNT / info->target_addr_max;
+            info->bulk_count = HG_PERF_BULK_COUNT;
 
         /* Create handles */
         info->handle_max = hg_test_info->handle_max;
         if (info->handle_max == 0)
-            info->handle_max = info->target_addr_max;
+            info->handle_max = 1;
 
         info->handles = malloc(info->handle_max * sizeof(hg_handle_t));
         HG_TEST_CHECK_ERROR(info->handles == NULL, error, ret, HG_NOMEM,
@@ -306,10 +400,6 @@ hg_perf_class_init(const struct hg_test_info *hg_test_info, int class_id,
                 error, ret, "HG_Create() failed (%s)", HG_Error_to_string(ret));
         }
     }
-
-    info->request = hg_request_create(info->request_class);
-    HG_TEST_CHECK_ERROR(info->request == NULL, error, ret, HG_NOMEM,
-        "hg_request_create() failed");
 
     return HG_SUCCESS;
 
@@ -355,11 +445,11 @@ hg_perf_class_cleanup(struct hg_perf_class_info *info)
         free(info->target_addrs);
     }
 
-    if (info->request != NULL)
-        hg_request_destroy(info->request);
+    if (info->wait_fd > 0)
+        hg_poll_remove(info->poll_set, info->wait_fd);
 
-    if (info->request_class)
-        hg_request_finalize(info->request_class, NULL);
+    if (info->poll_set != NULL)
+        hg_poll_destroy(info->poll_set);
 
     if (info->context)
         HG_Context_destroy(info->context);
@@ -367,8 +457,8 @@ hg_perf_class_cleanup(struct hg_perf_class_info *info)
 
 /*---------------------------------------------------------------------------*/
 static hg_return_t
-hg_perf_bulk_buf_alloc(
-    struct hg_perf_class_info *info, uint8_t bulk_flags, bool init_data)
+hg_perf_bulk_buf_alloc(struct hg_perf_class_info *info, uint8_t bulk_flags,
+    bool init_data, bool bulk_create)
 {
     size_t page_size = (size_t) hg_mem_get_page_size();
     hg_return_t ret;
@@ -396,10 +486,12 @@ hg_perf_bulk_buf_alloc(
         if (init_data)
             hg_perf_init_data(info->bulk_bufs[i], alloc_size);
 
-        ret = HG_Bulk_create(info->hg_class, 1, &info->bulk_bufs[i],
-            &alloc_size, bulk_flags, &info->local_bulk_handles[i]);
-        HG_TEST_CHECK_HG_ERROR(error, ret, "HG_Bulk_create() failed (%s)",
-            HG_Error_to_string(ret));
+        if (bulk_create) {
+            ret = HG_Bulk_create(info->hg_class, 1, &info->bulk_bufs[i],
+                &alloc_size, bulk_flags, &info->local_bulk_handles[i]);
+            HG_TEST_CHECK_HG_ERROR(error, ret, "HG_Bulk_create() failed (%s)",
+                HG_Error_to_string(ret));
+        }
     }
 
     return HG_SUCCESS;
@@ -464,14 +556,22 @@ error:
 
 /*---------------------------------------------------------------------------*/
 hg_return_t
-hg_perf_set_handles(struct hg_perf_class_info *info, enum hg_perf_rpc_id rpc_id)
+hg_perf_set_handles(const struct hg_test_info *hg_test_info,
+    struct hg_perf_class_info *info, enum hg_perf_rpc_id rpc_id)
 {
+    size_t comm_rank = (size_t) hg_test_info->na_test_info.mpi_info.rank,
+           comm_size = (size_t) hg_test_info->na_test_info.mpi_info.size;
     hg_return_t ret;
     size_t i;
 
     for (i = 0; i < info->handle_max; i++) {
-        ret = HG_Reset(info->handles[i],
-            info->target_addrs[i % info->target_addr_max], (hg_id_t) rpc_id);
+        size_t handle_global_id = comm_rank + i * comm_size,
+               target_rank = handle_global_id % info->target_addr_max;
+        /* Round-robin to targets depending on rank */
+        ret = HG_Reset(info->handles[i], info->target_addrs[target_rank],
+            (hg_id_t) rpc_id);
+        HG_TEST_LOG_DEBUG(
+            "(%zu) Sending to target_addr %zu", comm_rank, target_rank);
         HG_TEST_CHECK_HG_ERROR(
             error, ret, "HG_Reset() failed (%s)", HG_Error_to_string(ret));
     }
@@ -484,11 +584,12 @@ error:
 
 /*---------------------------------------------------------------------------*/
 hg_return_t
-hg_perf_rpc_buf_init(struct hg_perf_class_info *info)
+hg_perf_rpc_buf_init(
+    const struct hg_test_info *hg_test_info, struct hg_perf_class_info *info)
 {
     size_t page_size = (size_t) hg_mem_get_page_size();
     hg_return_t ret;
-    size_t i;
+    bool barrier = false;
 
     /* Prepare buf */
     info->rpc_buf = hg_mem_aligned_alloc(page_size, info->buf_size_max);
@@ -506,35 +607,50 @@ hg_perf_rpc_buf_init(struct hg_perf_class_info *info)
             info->buf_size_max);
     }
 
-    for (i = 0; i < info->target_addr_max; i++) {
-        struct hg_perf_request args = {
-            .expected_count = 1, .complete_count = 0, .request = info->request};
-        unsigned int completed = 0;
+    barrier = true;
 
-        ret = HG_Reset(info->handles[0], info->target_addrs[i],
-            (hg_id_t) HG_PERF_RATE_INIT);
-        HG_TEST_CHECK_HG_ERROR(
-            error, ret, "HG_Reset() failed (%s)", HG_Error_to_string(ret));
+    if (hg_test_info->na_test_info.mpi_info.rank == 0) {
+        size_t i;
 
-        hg_request_reset(info->request);
+        for (i = 0; i < info->target_addr_max; i++) {
+            struct hg_perf_request request = {.expected_count = 1,
+                .complete_count = 0,
+                .completed = HG_ATOMIC_VAR_INIT(0)};
+            unsigned int completed = 0;
 
-        /* Forward call to target addr */
-        ret =
-            HG_Forward(info->handles[0], hg_perf_request_complete, &args, NULL);
-        HG_TEST_CHECK_HG_ERROR(
-            error, ret, "HG_Forward() failed (%s)", HG_Error_to_string(ret));
-
-        hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
-        if (!completed) {
-            HG_TEST_LOG_WARNING("Canceling finalize, no response from server");
-
-            ret = HG_Cancel(info->handles[0]);
+            ret = HG_Reset(info->handles[0], info->target_addrs[i],
+                (hg_id_t) HG_PERF_RATE_INIT);
             HG_TEST_CHECK_HG_ERROR(
-                error, ret, "HG_Cancel() failed (%s)", HG_Error_to_string(ret));
+                error, ret, "HG_Reset() failed (%s)", HG_Error_to_string(ret));
 
-            hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
+            /* Forward call to target addr */
+            ret = HG_Forward(
+                info->handles[0], hg_perf_request_complete, &request, NULL);
+            HG_TEST_CHECK_HG_ERROR(error, ret, "HG_Forward() failed (%s)",
+                HG_Error_to_string(ret));
+
+            ret = hg_perf_request_wait(
+                info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+            HG_TEST_CHECK_HG_ERROR(error, ret,
+                "hg_perf_request_wait() failed (%s)", HG_Error_to_string(ret));
+
+            if (!completed) {
+                HG_TEST_LOG_WARNING(
+                    "Canceling finalize, no response from server");
+
+                ret = HG_Cancel(info->handles[0]);
+                HG_TEST_CHECK_HG_ERROR(error, ret, "HG_Cancel() failed (%s)",
+                    HG_Error_to_string(ret));
+
+                ret = hg_perf_request_wait(
+                    info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+                HG_TEST_CHECK_HG_ERROR(error, ret,
+                    "hg_perf_request_wait() failed (%s)",
+                    HG_Error_to_string(ret));
+            }
         }
     }
+    NA_Test_barrier(&hg_test_info->na_test_info);
 
     return HG_SUCCESS;
 
@@ -547,6 +663,8 @@ error:
         hg_mem_aligned_free(info->rpc_verify_buf);
         info->rpc_verify_buf = NULL;
     }
+    if (barrier)
+        NA_Test_barrier(&hg_test_info->na_test_info);
 
     return ret;
 }
@@ -556,54 +674,70 @@ hg_return_t
 hg_perf_bulk_buf_init(const struct hg_test_info *hg_test_info,
     struct hg_perf_class_info *info, hg_bulk_op_t bulk_op)
 {
+    size_t comm_rank = (size_t) hg_test_info->na_test_info.mpi_info.rank,
+           comm_size = (size_t) hg_test_info->na_test_info.mpi_info.size;
     hg_uint8_t bulk_flags =
         (bulk_op == HG_BULK_PULL) ? HG_BULK_READ_ONLY : HG_BULK_WRITE_ONLY;
+    struct hg_perf_request request = {
+        .expected_count = (int32_t) info->handle_max,
+        .complete_count = 0,
+        .completed = HG_ATOMIC_VAR_INIT(0)};
+    unsigned int completed = 0;
     hg_return_t ret;
     size_t i;
 
-    ret = hg_perf_bulk_buf_alloc(info, bulk_flags, bulk_op == HG_BULK_PULL);
+    ret = hg_perf_bulk_buf_alloc(info, bulk_flags, bulk_op == HG_BULK_PULL,
+        !hg_test_info->na_test_info.force_register);
     HG_TEST_CHECK_HG_ERROR(error, ret, "hg_perf_bulk_buf_alloc() failed (%s)",
         HG_Error_to_string(ret));
 
     for (i = 0; i < info->handle_max; i++) {
-        struct hg_perf_request args = {
-            .expected_count = 1, .complete_count = 0, .request = info->request};
-        unsigned int completed = 0;
+        size_t handle_global_id = comm_rank + i * comm_size,
+               target_rank = handle_global_id % info->target_addr_max;
         struct hg_perf_bulk_init_info bulk_info = {
-            .bulk = info->local_bulk_handles[i],
+            .bulk = (hg_test_info->na_test_info.force_register)
+                        ? HG_BULK_NULL
+                        : info->local_bulk_handles[i],
             .bulk_op = bulk_op,
-            .handle_id = (uint32_t) (i / info->target_addr_max),
+            .handle_id = (uint32_t) (handle_global_id / info->target_addr_max),
             .bulk_count = (uint32_t) info->bulk_count,
             .size_max = (uint32_t) info->buf_size_max,
             .handle_max = (uint32_t) info->handle_max,
-            .comm_rank = (uint32_t) hg_test_info->na_test_info.mpi_comm_rank,
-            .comm_size = (uint32_t) hg_test_info->na_test_info.mpi_comm_size,
+            .comm_size = (uint32_t) comm_size,
+            .target_rank = (uint32_t) target_rank,
             .target_addr_max = (uint32_t) info->target_addr_max};
 
-        ret = HG_Reset(info->handles[0],
-            info->target_addrs[i % info->target_addr_max],
+        ret = HG_Reset(info->handles[i], info->target_addrs[target_rank],
             (hg_id_t) HG_PERF_BW_INIT);
         HG_TEST_CHECK_HG_ERROR(
             error, ret, "HG_Reset() failed (%s)", HG_Error_to_string(ret));
 
-        hg_request_reset(info->request);
+        HG_TEST_LOG_DEBUG("(%zu) handle_id %" PRIu32 " (%zu) to %zu", comm_rank,
+            bulk_info.handle_id, handle_global_id, target_rank);
 
         /* Forward call to target addr */
         ret = HG_Forward(
-            info->handles[0], hg_perf_request_complete, &args, &bulk_info);
+            info->handles[i], hg_perf_request_complete, &request, &bulk_info);
         HG_TEST_CHECK_HG_ERROR(
             error, ret, "HG_Forward() failed (%s)", HG_Error_to_string(ret));
+    }
 
-        hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
-        if (!completed) {
-            HG_TEST_LOG_WARNING("Canceling finalize, no response from server");
+    ret = hg_perf_request_wait(info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+    HG_TEST_CHECK_HG_ERROR(error, ret, "hg_perf_request_wait() failed (%s)",
+        HG_Error_to_string(ret));
+    if (!completed) {
+        HG_TEST_LOG_WARNING("Canceling finalize, no response from server");
 
-            ret = HG_Cancel(info->handles[0]);
+        for (i = 0; i < info->handle_max; i++) {
+            ret = HG_Cancel(info->handles[i]);
             HG_TEST_CHECK_HG_ERROR(
                 error, ret, "HG_Cancel() failed (%s)", HG_Error_to_string(ret));
-
-            hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
         }
+
+        ret = hg_perf_request_wait(
+            info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+        HG_TEST_CHECK_HG_ERROR(error, ret, "hg_perf_request_wait() failed (%s)",
+            HG_Error_to_string(ret));
     }
 
     return HG_SUCCESS;
@@ -652,11 +786,14 @@ hg_perf_print_header_lat(const struct hg_test_info *hg_test_info,
     const struct hg_perf_class_info *info, const char *benchmark)
 {
     printf("# %s v%s\n", benchmark, VERSION_NAME);
+    printf(
+        "# %d client process(es)\n", hg_test_info->na_test_info.mpi_info.size);
     printf("# Loop %d times from size %zu to %zu byte(s) with %zu handle(s) "
            "in-flight\n",
         hg_test_info->na_test_info.loop, info->buf_size_min, info->buf_size_max,
         info->handle_max);
-    if (info->handle_max < info->target_addr_max)
+    if (info->handle_max * (size_t) hg_test_info->na_test_info.mpi_info.size <
+        info->target_addr_max)
         printf("# WARNING number of handles in flight less than number of "
                "targets\n");
     if (info->verify)
@@ -675,7 +812,7 @@ hg_perf_print_lat(const struct hg_test_info *hg_test_info,
     size_t loop = (size_t) hg_test_info->na_test_info.loop,
            handle_max = (size_t) info->handle_max,
            dir = (size_t) (hg_test_info->bidirectional ? 2 : 1),
-           mpi_comm_size = (size_t) hg_test_info->na_test_info.mpi_comm_size;
+           mpi_comm_size = (size_t) hg_test_info->na_test_info.mpi_info.size;
 
     rpc_time = hg_time_to_double(t) * 1e6 /
                (double) (loop * handle_max * dir * mpi_comm_size);
@@ -686,39 +823,76 @@ hg_perf_print_lat(const struct hg_test_info *hg_test_info,
 
 /*---------------------------------------------------------------------------*/
 void
-hg_perf_print_header_bw(const struct hg_test_info *hg_test_info,
+hg_perf_print_header_time(const struct hg_test_info *hg_test_info,
     const struct hg_perf_class_info *info, const char *benchmark)
 {
     printf("# %s v%s\n", benchmark, VERSION_NAME);
+    printf(
+        "# %d client process(es)\n", hg_test_info->na_test_info.mpi_info.size);
+    printf("# NULL RPC with %zu handle(s) in-flight\n", info->handle_max);
+    if (info->handle_max * (size_t) hg_test_info->na_test_info.mpi_info.size <
+        info->target_addr_max)
+        printf("# WARNING number of handles in flight less than number of "
+               "targets\n");
+    printf("%-*s%*s\n", 10, "# Size", NWIDTH, "Avg time (us)");
+    fflush(stdout);
+}
+
+/*---------------------------------------------------------------------------*/
+void
+hg_perf_print_time(const struct hg_test_info *hg_test_info,
+    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t)
+{
+    double rpc_time;
+    size_t handle_max = (size_t) info->handle_max,
+           mpi_comm_size = (size_t) hg_test_info->na_test_info.mpi_info.size;
+
+    rpc_time =
+        hg_time_to_double(t) * 1e6 / (double) (handle_max * mpi_comm_size);
+
+    printf("%-*zu%*.*f\n", 10, buf_size, NWIDTH, NDIGITS, rpc_time);
+}
+
+/*---------------------------------------------------------------------------*/
+void
+hg_perf_print_header_bw(const struct hg_test_info *hg_test_info,
+    const struct hg_perf_class_info *info, const char *benchmark)
+{
+    const char *bw_label = (hg_test_info->na_test_info.mbps)
+                               ? "Bandwidth (MB/s)"
+                               : "Bandwidth (MiB/s)";
+
+    printf("# %s v%s\n", benchmark, VERSION_NAME);
+    printf(
+        "# %d client process(es)\n", hg_test_info->na_test_info.mpi_info.size);
     printf("# Loop %d times from size %zu to %zu byte(s) with %zu handle(s) "
            "in-flight\n# - %zu bulk transfer(s) per handle\n",
         hg_test_info->na_test_info.loop, info->buf_size_min, info->buf_size_max,
         info->handle_max, (size_t) info->bulk_count);
     if (info->verify)
         printf("# WARNING verifying data, output will be slower\n");
-    if (hg_test_info->na_test_info.mbps)
-        printf("%-*s%*s%*s\n", 10, "# Size", NWIDTH, "Bandwidth (MB/s)", NWIDTH,
+    if (hg_test_info->na_test_info.force_register) {
+        printf("# WARNING forcing registration on every iteration\n");
+        printf("%-*s%*s%*s%*s\n", 10, "# Size", NWIDTH, bw_label, NWIDTH,
+            "Reg Time (us)", NWIDTH, "Dereg Time (us)");
+    } else {
+        printf("%-*s%*s%*s\n", 10, "# Size", NWIDTH, bw_label, NWIDTH,
             "Time (us)");
-    else
-        printf("%-*s%*s%*s\n", 10, "# Size", NWIDTH, "Bandwidth (MiB/s)",
-            NWIDTH, "Time (us)");
+    }
     fflush(stdout);
 }
 
 /*---------------------------------------------------------------------------*/
 void
 hg_perf_print_bw(const struct hg_test_info *hg_test_info,
-    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t)
+    const struct hg_perf_class_info *info, size_t buf_size, hg_time_t t,
+    hg_time_t t_reg, hg_time_t t_dereg)
 {
     size_t loop = (size_t) hg_test_info->na_test_info.loop,
-           mpi_comm_size = (size_t) hg_test_info->na_test_info.mpi_comm_size,
+           mpi_comm_size = (size_t) hg_test_info->na_test_info.mpi_info.size,
            handle_max = (size_t) info->handle_max,
            buf_count = (size_t) info->bulk_count;
-    double avg_time, avg_bw;
-
-    avg_time = hg_time_to_double(t) * 1e6 /
-               (double) (loop * handle_max * mpi_comm_size * buf_count);
-    avg_bw =
+    double avg_bw =
         (double) (buf_size * loop * handle_max * mpi_comm_size * buf_count) /
         hg_time_to_double(t);
 
@@ -727,20 +901,22 @@ hg_perf_print_bw(const struct hg_test_info *hg_test_info,
     else
         avg_bw /= (1024 * 1024); /* MiB/s */
 
-    printf("%-*zu%*.*f%*.*f\n", 10, buf_size, NWIDTH, NDIGITS, avg_bw, NWIDTH,
-        NDIGITS, avg_time);
-}
+    if (hg_test_info->na_test_info.force_register) {
+        double reg_time =
+            hg_time_to_double(t_reg) * 1e6 / (double) (loop * handle_max);
+        double dereg_time =
+            hg_time_to_double(t_dereg) * 1e6 / (double) (loop * handle_max);
 
-/*---------------------------------------------------------------------------*/
-hg_return_t
-hg_perf_request_complete(const struct hg_cb_info *hg_cb_info)
-{
-    struct hg_perf_request *info = (struct hg_perf_request *) hg_cb_info->arg;
+        printf("%-*zu%*.*f%*.*f%*.*f\n", 10, buf_size, NWIDTH, NDIGITS, avg_bw,
+            NWIDTH, NDIGITS, reg_time, NWIDTH, NDIGITS, dereg_time);
+    } else {
+        double avg_time =
+            hg_time_to_double(t) * 1e6 /
+            (double) (loop * handle_max * mpi_comm_size * buf_count);
 
-    if ((++info->complete_count) == info->expected_count)
-        hg_request_complete(info->request);
-
-    return HG_SUCCESS;
+        printf("%-*zu%*.*f%*.*f\n", 10, buf_size, NWIDTH, NDIGITS, avg_bw,
+            NWIDTH, NDIGITS, avg_time);
+    }
 }
 
 /*---------------------------------------------------------------------------*/
@@ -803,11 +979,11 @@ hg_perf_proc_bulk_init_info(hg_proc_t proc, void *arg)
     HG_TEST_CHECK_HG_ERROR(
         error, ret, "hg_proc_uint32_t() failed (%s)", HG_Error_to_string(ret));
 
-    ret = hg_proc_uint32_t(proc, &info->comm_rank);
+    ret = hg_proc_uint32_t(proc, &info->comm_size);
     HG_TEST_CHECK_HG_ERROR(
         error, ret, "hg_proc_uint32_t() failed (%s)", HG_Error_to_string(ret));
 
-    ret = hg_proc_uint32_t(proc, &info->comm_size);
+    ret = hg_proc_uint32_t(proc, &info->target_rank);
     HG_TEST_CHECK_HG_ERROR(
         error, ret, "hg_proc_uint32_t() failed (%s)", HG_Error_to_string(ret));
 
@@ -828,9 +1004,9 @@ hg_perf_proc_bulk_info(hg_proc_t proc, void *arg)
     struct hg_perf_bulk_info *info = (struct hg_perf_bulk_info *) arg;
     hg_return_t ret;
 
-    ret = hg_proc_uint32_t(proc, &info->comm_rank);
+    ret = hg_proc_hg_bulk_t(proc, &info->bulk);
     HG_TEST_CHECK_HG_ERROR(
-        error, ret, "hg_proc_uint32_t() failed (%s)", HG_Error_to_string(ret));
+        error, ret, "hg_proc_hg_bulk_t() failed (%s)", HG_Error_to_string(ret));
 
     ret = hg_proc_uint32_t(proc, &info->handle_id);
     HG_TEST_CHECK_HG_ERROR(
@@ -941,12 +1117,32 @@ error:
 
 /*---------------------------------------------------------------------------*/
 static hg_return_t
+hg_perf_first_cb(hg_handle_t handle)
+{
+    hg_return_t ret;
+
+    /* Send response back */
+    ret = HG_Respond(handle, NULL, NULL, NULL);
+    HG_TEST_CHECK_HG_ERROR(
+        error, ret, "HG_Respond() failed (%s)", HG_Error_to_string(ret));
+
+    (void) HG_Destroy(handle);
+
+    return HG_SUCCESS;
+
+error:
+    (void) HG_Destroy(handle);
+
+    return ret;
+}
+
+/*---------------------------------------------------------------------------*/
+static hg_return_t
 hg_perf_bulk_init_cb(hg_handle_t handle)
 {
     const struct hg_info *hg_info = HG_Get_info(handle);
     struct hg_perf_class_info *info = HG_Context_get_data(hg_info->context);
     struct hg_perf_bulk_init_info bulk_info;
-    size_t bulk_index;
     hg_return_t ret;
 
     ret = HG_Get_input(handle, &bulk_info);
@@ -957,15 +1153,21 @@ hg_perf_bulk_init_cb(hg_handle_t handle)
         hg_uint8_t bulk_flags = (bulk_info.bulk_op == HG_BULK_PULL)
                                     ? HG_BULK_WRITE_ONLY
                                     : HG_BULK_READ_ONLY;
-        info->handle_per_rank =
-            (bulk_info.handle_max / bulk_info.target_addr_max);
 
-        info->handle_max = info->handle_per_rank * bulk_info.comm_size;
+        info->handle_max = (bulk_info.handle_max * bulk_info.comm_size) /
+                           bulk_info.target_addr_max;
+        if (((bulk_info.handle_max * bulk_info.comm_size) %
+                bulk_info.target_addr_max) > bulk_info.target_rank)
+            info->handle_max++;
+
+        HG_TEST_LOG_DEBUG("(%d,%" PRIu32 ") number of handles is %zu",
+            info->class_id, bulk_info.target_rank, info->handle_max);
+
         info->bulk_count = bulk_info.bulk_count;
         info->buf_size_max = bulk_info.size_max;
 
         ret = hg_perf_bulk_buf_alloc(
-            info, bulk_flags, bulk_info.bulk_op == HG_BULK_PUSH);
+            info, bulk_flags, bulk_info.bulk_op == HG_BULK_PUSH, true);
         HG_TEST_CHECK_HG_ERROR(error_free, ret,
             "hg_perf_bulk_buf_alloc() failed (%s)", HG_Error_to_string(ret));
 
@@ -976,11 +1178,13 @@ hg_perf_bulk_init_cb(hg_handle_t handle)
             info->handle_max * sizeof(hg_bulk_t));
     }
 
-    bulk_index = bulk_info.handle_id % info->handle_per_rank +
-                 info->handle_per_rank * bulk_info.comm_rank;
-
-    info->remote_bulk_handles[bulk_index] = bulk_info.bulk;
-    HG_Bulk_ref_incr(bulk_info.bulk);
+    HG_TEST_CHECK_ERROR(bulk_info.handle_id >= info->handle_max, error_free,
+        ret, HG_OVERFLOW, "(%d,%" PRIu32 ") Handle ID is %" PRIu32 " >= %zu",
+        info->class_id, bulk_info.target_rank, bulk_info.handle_id,
+        info->handle_max);
+    info->remote_bulk_handles[bulk_info.handle_id] = bulk_info.bulk;
+    if (bulk_info.bulk != HG_BULK_NULL)
+        HG_Bulk_ref_incr(bulk_info.bulk);
 
     /* Send response back */
     ret = HG_Respond(handle, NULL, NULL, NULL);
@@ -1023,27 +1227,28 @@ hg_perf_bulk_common(hg_handle_t handle, hg_bulk_op_t op)
     struct hg_perf_request *request =
         (struct hg_perf_request *) HG_Get_data(handle);
     struct hg_perf_bulk_info bulk_info;
+    hg_bulk_t remote_bulk;
     hg_return_t ret;
-    size_t i, bulk_index;
+    size_t i;
 
     /* Get input struct */
     ret = HG_Get_input(handle, &bulk_info);
     HG_TEST_CHECK_HG_ERROR(
         error, ret, "HG_Get_input() failed (%s)", HG_Error_to_string(ret));
-
-    bulk_index = bulk_info.handle_id % info->handle_per_rank +
-                 info->handle_per_rank * bulk_info.comm_rank;
+    remote_bulk = bulk_info.bulk != HG_BULK_NULL
+                      ? bulk_info.bulk
+                      : info->remote_bulk_handles[bulk_info.handle_id];
 
     /* Initialize request */
     *request = (struct hg_perf_request){.complete_count = 0,
         .expected_count = (int32_t) info->bulk_count,
-        .request = NULL};
+        .completed = HG_ATOMIC_VAR_INIT(0)};
 
     /* Post bulk push */
     for (i = 0; i < info->bulk_count; i++) {
         ret = HG_Bulk_transfer(info->context, hg_perf_bulk_transfer_cb, handle,
-            op, hg_info->addr, info->remote_bulk_handles[bulk_index],
-            i * info->buf_size_max, info->local_bulk_handles[bulk_index],
+            op, hg_info->addr, remote_bulk, i * info->buf_size_max,
+            info->local_bulk_handles[bulk_info.handle_id],
             i * info->buf_size_max, bulk_info.size, HG_OP_ID_IGNORE);
         HG_TEST_CHECK_HG_ERROR(error_free, ret,
             "HG_Bulk_transfer() failed (%s)", HG_Error_to_string(ret));
@@ -1150,8 +1355,9 @@ hg_perf_send_done(struct hg_perf_class_info *info)
     size_t i;
 
     for (i = 0; i < info->target_addr_max; i++) {
-        struct hg_perf_request args = {
-            .expected_count = 1, .complete_count = 0, .request = info->request};
+        struct hg_perf_request request = {.expected_count = 1,
+            .complete_count = 0,
+            .completed = HG_ATOMIC_VAR_INIT(0)};
         unsigned int completed = 0;
 
         ret = HG_Reset(
@@ -1159,15 +1365,16 @@ hg_perf_send_done(struct hg_perf_class_info *info)
         HG_TEST_CHECK_HG_ERROR(
             error, ret, "HG_Reset() failed (%s)", HG_Error_to_string(ret));
 
-        hg_request_reset(info->request);
-
         /* Forward call to target addr */
-        ret =
-            HG_Forward(info->handles[0], hg_perf_request_complete, &args, NULL);
+        ret = HG_Forward(
+            info->handles[0], hg_perf_request_complete, &request, NULL);
         HG_TEST_CHECK_HG_ERROR(
             error, ret, "HG_Forward() failed (%s)", HG_Error_to_string(ret));
 
-        hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
+        ret = hg_perf_request_wait(
+            info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+        HG_TEST_CHECK_HG_ERROR(error, ret, "hg_perf_request_wait() failed (%s)",
+            HG_Error_to_string(ret));
         if (!completed) {
             HG_TEST_LOG_WARNING("Canceling finalize, no response from server");
 
@@ -1175,7 +1382,10 @@ hg_perf_send_done(struct hg_perf_class_info *info)
             HG_TEST_CHECK_HG_ERROR(
                 error, ret, "HG_Cancel() failed (%s)", HG_Error_to_string(ret));
 
-            hg_request_wait(info->request, HG_PERF_TIMEOUT_MAX, &completed);
+            ret = hg_perf_request_wait(
+                info, &request, HG_PERF_TIMEOUT_MAX, &completed);
+            HG_TEST_CHECK_HG_ERROR(error, ret,
+                "hg_perf_request_wait() failed (%s)", HG_Error_to_string(ret));
         }
     }
 

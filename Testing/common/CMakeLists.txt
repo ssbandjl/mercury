@@ -44,28 +44,28 @@ else()
 endif()
 mark_as_advanced(MERCURY_TESTING_ENABLE_PARALLEL)
 
-# DRC
+# Detect <sys/prctl.h>
+check_include_files("sys/prctl.h" HG_TEST_HAS_SYSPRCTL_H)
+
+# CXI
 if(NA_USE_OFI)
-  option(NA_OFI_TESTING_USE_CRAY_DRC
-    "Use Cray DRC to allow multi-job communication." OFF)
-  mark_as_advanced(NA_OFI_TESTING_USE_CRAY_DRC)
-  if(NA_OFI_TESTING_USE_CRAY_DRC)
-    find_package(DRC REQUIRED)
-    message(STATUS "DRC include directory: ${DRC_INCLUDE_DIRS}")
-    set(HG_TEST_HAS_CRAY_DRC 1)
-    set(MERCURY_TEST_COMMON_EXT_INCLUDE_DEPENDENCIES
-      ${MERCURY_TEST_COMMON_EXT_INCLUDE_DEPENDENCIES}
-      ${DRC_INCLUDE_DIRS}
+  option(NA_OFI_TESTING_USE_CXI
+    "Use CXI library for service configuration." OFF)
+  mark_as_advanced(NA_OFI_TESTING_USE_CXI)
+  if(NA_OFI_TESTING_USE_CXI)
+    find_package(CXI REQUIRED)
+    message(STATUS "CXI include directory: ${CXI_INCLUDE_DIRS}")
+    set(HG_TEST_HAS_CXI 1)
+    set(NA_TEST_COMMON_EXT_INCLUDE_DEPENDENCIES
+      ${NA_TEST_COMMON_EXT_INCLUDE_DEPENDENCIES}
+      ${CXI_INCLUDE_DIRS}
     )
-    set(MERCURY_TEST_COMMON_EXT_LIB_DEPENDENCIES
-      ${MERCURY_TEST_COMMON_EXT_LIB_DEPENDENCIES}
-      ${DRC_LIBRARIES}
+    set(NA_TEST_COMMON_EXT_LIB_DEPENDENCIES
+      ${NA_TEST_COMMON_EXT_LIB_DEPENDENCIES}
+      ${CXI_LIBRARIES}
     )
   endif()
 endif()
-
-# Detect <sys/prctl.h>
-check_include_files("sys/prctl.h" HG_TEST_HAS_SYSPRCTL_H)
 
 #------------------------------------------------------------------------------
 # Set up test options
@@ -89,18 +89,12 @@ configure_file(
 set(NA_TEST_COMMON_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/na_test.c
   ${CMAKE_CURRENT_SOURCE_DIR}/na_test_getopt.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/na_test_mpi.c
 )
 
 set(MERCURY_TEST_COMMON_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/mercury_test.c
 )
-
-if(NA_OFI_TESTING_USE_CRAY_DRC)
-  set(MERCURY_TEST_COMMON_SRCS
-    ${MERCURY_TEST_COMMON_SRCS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/mercury_test_drc.c
-  )
-endif()
 
 #------------------------------------------------------------------------------
 # Specify project private header files
@@ -109,19 +103,13 @@ set(NA_TEST_COMMON_PRIVATE_HEADERS
   ${CMAKE_CURRENT_BINARY_DIR}/mercury_test_config.h
   ${CMAKE_CURRENT_SOURCE_DIR}/na_test.h
   ${CMAKE_CURRENT_SOURCE_DIR}/na_test_getopt.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/na_test_mpi.h
 )
 
 set(MERCURY_TEST_COMMON_PRIVATE_HEADERS
   ${CMAKE_CURRENT_BINARY_DIR}/mercury_test_config.h
   ${CMAKE_CURRENT_SOURCE_DIR}/mercury_test.h
 )
-
-if(NA_OFI_TESTING_USE_CRAY_DRC)
-  set(MERCURY_TEST_COMMON_PRIVATE_HEADERS
-    ${MERCURY_TEST_COMMON_PRIVATE_HEADERS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/mercury_test_drc.h
-  )
-endif()
 
 #----------------------------------------------------------------------------
 # Libraries
@@ -152,7 +140,7 @@ endif()
 # Mercury test common
 add_library(mercury_test_common STATIC ${MERCURY_TEST_COMMON_SRCS}
   ${MERCURY_TEST_COMMON_PRIVATE_HEADERS})
-target_include_directories(na_test_common
+target_include_directories(mercury_test_common
   PUBLIC  "$<BUILD_INTERFACE:${MERCURY_TEST_COMMON_BUILD_INCLUDE_DEPENDENCIES}>"
 )
 target_include_directories(mercury_test_common

@@ -12,6 +12,11 @@ CTEST=ctest
 CTEST_SCRIPT=Testing/script/gh_script.cmake
 STEP=$1
 
+# workaround https://github.com/Homebrew/homebrew-core/issues/158759
+if [[ ${RUNNER_OS} == 'macOS' ]]; then
+  export CURL_SSL_BACKEND="SecureTransport"
+fi
+
 if [[ ${GITHUB_REF}  == 'refs/heads/master' ]] && [[ ${GITHUB_EVENT_NAME} == 'push' ]]; then
   DASHBOARD_MODEL="Continuous"
 else
@@ -36,10 +41,19 @@ else
   BUILD_DYNAMIC_PLUGINS=FALSE
 fi
 
-# Source intel env when using icc
-if [[ ${CC} == 'icc' ]]; then
-  ICC_LATEST_VERSION=$(ls -1 /opt/intel/oneapi/compiler/ | grep -v latest | sort | tail -1)
-  source /opt/intel/oneapi/compiler/"$ICC_LATEST_VERSION"/env/vars.sh
+if [[ ${MERCURY_ENCODING} == 'xdr_on' ]]; then
+  MERCURY_USE_XDR=TRUE
+else
+  MERCURY_USE_XDR=FALSE
+fi
+
+# Source intel env when using icx
+if [[ ${CC} == 'icx' ]]; then
+  ICX_LATEST_VERSION=$(ls -1 /opt/intel/oneapi/compiler/ | grep -v latest | sort | tail -1)
+  source /opt/intel/oneapi/compiler/"$ICX_LATEST_VERSION"/env/vars.sh
+
+  IMPI_LATEST_VERSION=$(ls -1 /opt/intel/oneapi/mpi/ | grep -v latest | sort | tail -1)
+  source /opt/intel/oneapi/mpi/"$IMPI_LATEST_VERSION"/env/vars.sh
 fi
 
 export COV=`which gcov`
@@ -56,6 +70,7 @@ $CTEST -VV --output-on-failure                        \
   -Ddashboard_model=${DASHBOARD_MODEL}                \
   -Dbuild_shared_libs=${BUILD_SHARED}                 \
   -Dbuild_dynamic_plugins=${BUILD_DYNAMIC_PLUGINS}    \
+  -Dbuild_xdr=${MERCURY_USE_XDR}                      \
   -Ddashboard_do_submit=${DASHBOARD_SUBMIT}           \
   -Ddashboard_allow_errors=TRUE                       \
   -S $CTEST_SCRIPT

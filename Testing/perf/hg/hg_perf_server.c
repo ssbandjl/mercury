@@ -114,22 +114,62 @@ hg_perf_loop(struct hg_perf_class_info *info)
 {
     hg_return_t ret;
 
-    do {
-        unsigned int actual_count = 0;
+    while (!info->done) {
+        unsigned int count = 0, actual_count = 0;
 
-        do {
-            ret = HG_Trigger(info->context, 0, 1, &actual_count);
-        } while ((ret == HG_SUCCESS) && actual_count);
-        HG_TEST_CHECK_ERROR_NORET(ret != HG_SUCCESS && ret != HG_TIMEOUT, error,
-            "HG_Trigger() failed (%s)", HG_Error_to_string(ret));
+        if (info->poll_set) {
+            hg_time_t now;
 
-        if (info->done)
-            break;
+            hg_time_get_current_ms(&now);
+            if (!hg_time_less(now, info->spin_deadline)) {
+                /* Reached spin deadline, reset to force re-evaluation */
+                info->spin_flag = false;
+                info->spin_deadline = hg_time_from_ms(0);
+            }
 
-        ret = HG_Progress(info->context, 1000);
-    } while (ret == HG_SUCCESS || ret == HG_TIMEOUT);
-    HG_TEST_CHECK_ERROR_NORET(ret != HG_SUCCESS && ret != HG_TIMEOUT, error,
-        "HG_Progress() failed (%s)", HG_Error_to_string(ret));
+            if (!info->spin_flag) {
+                if (!HG_Event_ready(info->context)) {
+                    struct hg_poll_event poll_event = {
+                        .events = 0, .data.ptr = NULL};
+                    unsigned int actual_events = 0;
+                    int rc;
+
+                    HG_TEST_LOG_DEBUG("Waiting for 1000 ms");
+
+                    rc = hg_poll_wait(
+                        info->poll_set, 1000, 1, &poll_event, &actual_events);
+                    HG_TEST_CHECK_ERROR(rc != 0, error, ret, HG_PROTOCOL_ERROR,
+                        "hg_poll_wait() failed");
+                    if (actual_events > 0) {
+                        /* If we woke up with an event, set spin flag to true to
+                         * keep spinning for a while until we reach
+                         * spin_deadline. */
+                        hg_time_get_current_ms(&now);
+                        info->spin_flag = true;
+                        info->spin_deadline =
+                            hg_time_add(now, hg_time_from_ms(1000));
+                    }
+                } else {
+                    /* If we did not block, set spin flag to true to keep
+                     * spinning until we reach spin_deadline. */
+                    info->spin_flag = true;
+                    info->spin_deadline =
+                        hg_time_add(now, hg_time_from_ms(1000));
+                }
+            }
+        }
+
+        ret = HG_Event_progress(info->context, &count);
+        HG_TEST_CHECK_HG_ERROR(
+            error, ret, "HG_Progress() failed (%s)", HG_Error_to_string(ret));
+
+        if (count == 0)
+            continue;
+
+        ret = HG_Event_trigger(info->context, count, &actual_count);
+        HG_TEST_CHECK_HG_ERROR(
+            error, ret, "HG_Trigger() failed (%s)", HG_Error_to_string(ret));
+    }
 
     return HG_SUCCESS;
 
@@ -151,8 +191,11 @@ main(int argc, char *argv[])
     HG_TEST_CHECK_HG_ERROR(error, hg_ret, "hg_perf_init() failed (%s)",
         HG_Error_to_string(hg_ret));
     hg_test_info = &info.hg_test_info;
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
+        printf("# %d server process(es)\n",
+            hg_test_info->na_test_info.mpi_info.size);
 
-    if (hg_test_info->na_test_info.mpi_comm_rank == 0)
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
         HG_TEST_READY_MSG();
 
     if (info.class_max > 1) {
@@ -179,7 +222,7 @@ main(int argc, char *argv[])
     }
 
     /* Finalize interface */
-    if (hg_test_info->na_test_info.mpi_comm_rank == 0)
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
         printf("Finalizing...\n");
     hg_perf_cleanup(&info);
     free(progress_threads);

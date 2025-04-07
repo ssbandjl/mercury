@@ -8,10 +8,6 @@
 #include "na_test.h"
 #include "na_test_getopt.h"
 
-#ifdef NA_HAS_MPI
-#    include "na_mpi.h"
-#endif
-
 #include "mercury_util.h"
 
 #include <stdio.h>
@@ -57,19 +53,27 @@ na_test_parse_options(
 static size_t
 na_test_parse_size(const char *str);
 
-#ifdef HG_TEST_HAS_PARALLEL
-static na_return_t
-na_test_mpi_init(struct na_test_info *na_test_info);
+static enum na_traffic_class
+na_test_tclass(const char *str);
 
-static void
-na_test_mpi_finalize(struct na_test_info *na_test_info);
+#ifdef HG_TEST_HAS_CXI
+static na_return_t
+na_test_alloc_svc(struct na_test_cxi_info *cxi_info, const char *init_str);
+
+static na_return_t
+na_test_print_svc(
+    const struct na_test_cxi_info *cxi_info, char *buf, size_t buf_size);
+
+static na_return_t
+na_test_free_svc(struct na_test_cxi_info *cxi_info);
 #endif
 
 static char *
 na_test_gen_config(struct na_test_info *na_test_info, unsigned int i);
 
 static na_return_t
-na_test_self_addr_publish(na_class_t *na_class, bool append);
+na_test_self_addr_publish(
+    const char *hostfile, na_class_t *na_class, bool append);
 
 /*******************/
 /* Local Variables */
@@ -85,7 +89,7 @@ extern const struct na_test_opt na_test_opt_g[];
 HG_LOG_OUTLET_DECL(na_test) = HG_LOG_OUTLET_INITIALIZER(
     na_test, HG_LOG_PASS, NULL, NULL);
 #else
-HG_LOG_SUBSYS_DECL_REGISTER(na_test, HG_LOG_OUTLET_ROOT_NAME);
+HG_LOG_DECL_REGISTER(na_test);
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -96,17 +100,17 @@ na_test_usage(const char *execname)
     printf("    NA OPTIONS\n");
     printf("    -h, --help           Print a usage message and exit\n");
     printf("    -c, --comm           Select NA plugin\n"
-           "                         NA plugins: bmi, mpi, cci, etc\n");
+           "                         NA plugins: ofi, ucx, etc\n");
     printf("    -d, --domain         Select NA OFI domain\n");
     printf("    -p, --protocol       Select plugin protocol\n"
-           "                         Available protocols: tcp, ib, etc\n");
+           "                         Available protocols: tcp, verbs, etc\n");
     printf("    -H, --hostname       Select hostname / IP address to use\n"
            "                         Default: any\n");
     printf("    -P, --port           Select port to use\n"
            "                         Default: any\n");
-    printf("    -L, --listen         Listen for incoming messages\n");
     printf("    -S, --self_send      Send to self\n");
     printf("    -k, --key            Pass auth key\n");
+    printf("    -T, --tclass         Traffic class to use\n");
     printf("    -l, --loop           Number of loops (default: 1)\n");
     printf("    -b, --busy           Busy wait\n");
     printf("    -y  --buf_size_min   Min buffer size (in bytes)\n");
@@ -115,6 +119,9 @@ na_test_usage(const char *execname)
     printf("    -R, --force-register Force registration of buffers\n");
     printf("    -M, --mbps           Output in MB/s instead of MiB/s\n");
     printf("    -U, --no-multi-recv  Disable multi-recv\n");
+    printf("    -f, --hostfile       Specify hostfile to use\n"
+           "                         Default: " HG_TEST_TEMP_DIRECTORY
+               HG_TEST_CONFIG_FILE_NAME "\n");
     printf("    -V, --verbose        Print verbose output\n");
 }
 
@@ -157,9 +164,6 @@ na_test_parse_options(int argc, char *argv[], struct na_test_info *na_test_info)
                 break;
             case 'P': /* port */
                 na_test_info->port = atoi(na_test_opt_arg_g);
-                break;
-            case 'L': /* listen */
-                na_test_info->listen = true;
                 break;
             case 's': /* static */
                 na_test_info->mpi_static = true;
@@ -212,6 +216,12 @@ na_test_parse_options(int argc, char *argv[], struct na_test_info *na_test_info)
             case 'U': /* no-multi-recv */
                 na_test_info->no_multi_recv = true;
                 break;
+            case 'f': /* hostfile */
+                na_test_info->hostfile = strdup(na_test_opt_arg_g);
+                break;
+            case 'T': /* tclass */
+                na_test_info->tclass = strdup(na_test_opt_arg_g);
+                break;
             default:
                 break;
         }
@@ -255,102 +265,123 @@ na_test_parse_size(const char *str)
 }
 
 /*---------------------------------------------------------------------------*/
-#ifdef HG_TEST_HAS_PARALLEL
-static na_return_t
-na_test_mpi_init(struct na_test_info *na_test_info)
+static enum na_traffic_class
+na_test_tclass(const char *str)
 {
-    int mpi_initialized = 0;
+    if (strcmp(str, "best_effort") == 0)
+        return NA_TC_BEST_EFFORT;
+    else if (strcmp(str, "low_latency") == 0)
+        return NA_TC_LOW_LATENCY;
+    else if (strcmp(str, "bulk_data") == 0)
+        return NA_TC_BULK_DATA;
+    else if (strcmp(str, "dedicated_access") == 0)
+        return NA_TC_DEDICATED_ACCESS;
+    else if (strcmp(str, "scavenger") == 0)
+        return NA_TC_SCAVENGER;
+    else if (strcmp(str, "network_ctrl") == 0)
+        return NA_TC_NETWORK_CTRL;
+    else {
+        fprintf(stderr,
+            "Traffic class does not match: best_effort, low_latency, "
+            "bulk_data, dedicated_access, scavenger, network_ctrl\n");
+        return NA_TC_UNSPEC;
+    }
+}
+
+/*---------------------------------------------------------------------------*/
+#ifdef HG_TEST_HAS_CXI
+static na_return_t
+na_test_alloc_svc(struct na_test_cxi_info *cxi_info, const char *init_str)
+{
+    struct cxi_svc_fail_info svc_fail_info = {};
+    uint16_t vni_min = 0, vni_max = 0;
     na_return_t ret;
+    unsigned int i;
     int rc;
 
-    rc = MPI_Initialized(&mpi_initialized);
-    NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret, NA_PROTOCOL_ERROR,
-        "MPI_Initialized() failed");
-    NA_TEST_CHECK_ERROR(mpi_initialized, error, ret, NA_PROTOCOL_ERROR,
-        "MPI was already initialized");
+    rc = sscanf(init_str, "0:%" SCNu16 ":%" SCNu16, &vni_min, &vni_max);
+    NA_TEST_CHECK_ERROR(rc != 1 && rc != 2, error, ret, NA_PROTONOSUPPORT,
+        "Invalid CXI auth key range string (%s), format is "
+        "\"0:vni_min<:vni_max>\"",
+        init_str);
 
-#    ifdef NA_MPI_HAS_GNI_SETUP
-    /* Setup GNI job before initializing MPI */
-    ret = NA_MPI_Gni_job_setup();
-    NA_TEST_CHECK_NA_ERROR(error, ret, "Could not setup GNI job");
-#    endif
+    cxi_info->dev = NULL;
 
-    if ((na_test_info->listen && na_test_info->use_threads) ||
-        na_test_info->mpi_static) {
-        int provided;
+    rc = cxil_open_device(0, &cxi_info->dev);
+    NA_TEST_CHECK_ERROR(rc != 0, error, ret, NA_PROTOCOL_ERROR,
+        "cxil_open_device() failed (%d)", rc);
 
-        rc = MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
-        NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret, NA_PROTOCOL_ERROR,
-            "MPI_Init_thread() failed");
+    memset(&cxi_info->svc_desc, 0, sizeof(cxi_info->svc_desc));
 
-        NA_TEST_CHECK_ERROR(provided != MPI_THREAD_MULTIPLE, error, ret,
-            NA_PROTOCOL_ERROR, "MPI_THREAD_MULTIPLE cannot be set");
+    cxi_info->svc_desc.restricted_vnis = 1;
+    cxi_info->svc_desc.enable = 1;
+    cxi_info->svc_desc.num_vld_vnis =
+        (vni_max > vni_min) ? vni_max - vni_min + 1 : 1;
 
-        /* Only if we do static MPMD MPI */
-        if (na_test_info->mpi_static) {
-            int color, global_rank;
+    for (i = 0; i < cxi_info->svc_desc.num_vld_vnis; i++)
+        cxi_info->svc_desc.vnis[i] = vni_min + i;
 
-            rc = MPI_Comm_rank(MPI_COMM_WORLD, &global_rank);
-            NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret,
-                NA_PROTOCOL_ERROR, "MPI_Comm_rank() failed");
+    rc = cxil_alloc_svc(cxi_info->dev, &cxi_info->svc_desc, &svc_fail_info);
+    NA_TEST_CHECK_ERROR(rc <= 0, error, ret, NA_PROTOCOL_ERROR,
+        "cxil_alloc_svc() failed (%d)", rc);
 
-            /* Color is 1 for server, 2 for client */
-            color = (na_test_info->listen) ? 1 : 2;
-
-            /* Assume that the application did not split MPI_COMM_WORLD already
-             */
-            rc = MPI_Comm_split(
-                MPI_COMM_WORLD, color, global_rank, &na_test_info->mpi_comm);
-            NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret,
-                NA_PROTOCOL_ERROR, "MPI_Comm_split() failed");
-
-#    ifdef NA_HAS_MPI
-            /* Set init comm that will be used to setup NA MPI */
-            NA_MPI_Set_init_intra_comm(na_test_info->mpi_comm);
-#    endif
-        } else
-            na_test_info->mpi_comm = MPI_COMM_WORLD; /* default */
-    } else {
-        rc = MPI_Init(NULL, NULL);
-        NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret, NA_PROTOCOL_ERROR,
-            "MPI_Init() failed");
-
-        na_test_info->mpi_comm = MPI_COMM_WORLD; /* default */
-    }
-
-    rc = MPI_Comm_rank(na_test_info->mpi_comm, &na_test_info->mpi_comm_rank);
-    NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret, NA_PROTOCOL_ERROR,
-        "MPI_Comm_rank() failed");
-
-    rc = MPI_Comm_size(na_test_info->mpi_comm, &na_test_info->mpi_comm_size);
-    NA_TEST_CHECK_ERROR(rc != MPI_SUCCESS, error, ret, NA_PROTOCOL_ERROR,
-        "MPI_Comm_size() failed");
+    cxi_info->svc_desc.svc_id = rc;
 
     return NA_SUCCESS;
 
 error:
-    na_test_mpi_finalize(na_test_info);
+    (void) na_test_free_svc(cxi_info);
 
     return ret;
 }
 
 /*---------------------------------------------------------------------------*/
-static void
-na_test_mpi_finalize(struct na_test_info *na_test_info)
+static na_return_t
+na_test_print_svc(
+    const struct na_test_cxi_info *cxi_info, char *buf, size_t buf_size)
 {
-    int mpi_finalized = 0;
+    na_return_t ret;
+    int rc;
 
-    if (na_test_info->mpi_no_finalize)
-        return;
+    if (cxi_info->svc_desc.num_vld_vnis == 1)
+        rc = snprintf(buf, buf_size, "%" PRIu32 ":%" PRIu16,
+            cxi_info->svc_desc.svc_id, cxi_info->svc_desc.vnis[0]);
+    else
+        rc = snprintf(buf, buf_size, "%" PRIu32 ":%" PRIu16 ":%" PRIu16,
+            cxi_info->svc_desc.svc_id, cxi_info->svc_desc.vnis[0],
+            cxi_info->svc_desc.vnis[cxi_info->svc_desc.num_vld_vnis - 1]);
+    NA_TEST_CHECK_ERROR(rc < 0 || rc > (int) buf_size, error, ret, NA_OVERFLOW,
+        "snprintf() failed or name truncated, rc: %d (expected %zu)", rc,
+        buf_size);
 
-    (void) MPI_Finalized(&mpi_finalized);
-    if (mpi_finalized)
-        return;
+    return NA_SUCCESS;
 
-    if (na_test_info->mpi_static && na_test_info->mpi_comm != MPI_COMM_NULL)
-        (void) MPI_Comm_free(&na_test_info->mpi_comm);
+error:
+    return ret;
+}
 
-    (void) MPI_Finalize();
+/*---------------------------------------------------------------------------*/
+static na_return_t
+na_test_free_svc(struct na_test_cxi_info *cxi_info)
+{
+    na_return_t ret;
+
+    if (cxi_info->svc_desc.svc_id > 0) {
+        int rc = cxil_destroy_svc(cxi_info->dev, cxi_info->svc_desc.svc_id);
+        NA_TEST_CHECK_ERROR(rc != 0, error, ret, NA_PROTOCOL_ERROR,
+            "cxil_destroy_svc() failed (%d)", rc);
+        cxi_info->svc_desc.svc_id = 0;
+    }
+
+    if (cxi_info->dev != NULL) {
+        cxil_close_device(cxi_info->dev);
+        cxi_info->dev = NULL;
+    }
+
+    return NA_SUCCESS;
+
+error:
+    return ret;
 }
 #endif
 
@@ -415,14 +446,18 @@ error:
 
 /*---------------------------------------------------------------------------*/
 na_return_t
-na_test_set_config(const char *addr_name, bool append)
+na_test_set_config(const char *hostfile, const char *addr_name, bool append)
 {
+    const char *config_file =
+        hostfile != NULL ? hostfile
+                         : HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME;
     FILE *config = NULL;
     na_return_t ret;
     int rc;
 
-    config = fopen(
-        HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME, append ? "a" : "w");
+    if (!append)
+        printf("# Writing config to %s\n", config_file);
+    config = fopen(config_file, append ? "a" : "w");
     NA_TEST_CHECK_ERROR(config == NULL, error, ret, NA_NOENTRY,
         "Could not open config file from: %s",
         HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME);
@@ -447,14 +482,19 @@ error:
 
 /*---------------------------------------------------------------------------*/
 na_return_t
-na_test_get_config(char *addrs[], size_t *count_p)
+na_test_get_config(const char *hostfile, char *addrs[], size_t *count_p)
 {
+    const char *config_file =
+        hostfile != NULL ? hostfile
+                         : HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME;
     FILE *config = NULL;
     na_return_t ret;
     size_t count = 0;
     int rc;
 
-    config = fopen(HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME, "r");
+    if (addrs != NULL)
+        printf("# Reading config from %s\n", config_file);
+    config = fopen(config_file, "r");
     NA_TEST_CHECK_ERROR(config == NULL, error, ret, NA_NOENTRY,
         "Could not open config file from: %s",
         HG_TEST_TEMP_DIRECTORY HG_TEST_CONFIG_FILE_NAME);
@@ -499,7 +539,8 @@ error:
 
 /*---------------------------------------------------------------------------*/
 static na_return_t
-na_test_self_addr_publish(na_class_t *na_class, bool append)
+na_test_self_addr_publish(
+    const char *hostfile, na_class_t *na_class, bool append)
 {
     char addr_string[NA_TEST_MAX_ADDR_NAME];
     size_t addr_string_len = NA_TEST_MAX_ADDR_NAME;
@@ -517,7 +558,7 @@ na_test_self_addr_publish(na_class_t *na_class, bool append)
     NA_Addr_free(na_class, self_addr);
     self_addr = NULL;
 
-    ret = na_test_set_config(addr_string, append);
+    ret = na_test_set_config(hostfile, addr_string, append);
     NA_TEST_CHECK_NA_ERROR(error, ret, "na_test_set_config() failed (%s)",
         NA_Error_to_string(ret));
 
@@ -538,6 +579,9 @@ NA_Test_init(int argc, char *argv[], struct na_test_info *na_test_info)
     struct na_init_info na_init_info = NA_INIT_INFO_INITIALIZER;
     na_return_t ret = NA_SUCCESS;
     const char *log_subsys = getenv("HG_LOG_SUBSYS");
+#ifdef HG_TEST_HAS_CXI
+    char auth_key[64];
+#endif
     size_t i;
 
     if (!log_subsys) {
@@ -554,36 +598,54 @@ NA_Test_init(int argc, char *argv[], struct na_test_info *na_test_info)
 
     na_test_parse_options(argc, argv, na_test_info);
 
-#ifdef HG_TEST_HAS_PARALLEL
     /* Test run in parallel using mpirun so must intialize MPI to get
      * basic setup info etc */
-    ret = na_test_mpi_init(na_test_info);
+    ret = na_test_mpi_init(&na_test_info->mpi_info, na_test_info->listen,
+        na_test_info->use_threads, na_test_info->mpi_static);
     NA_TEST_CHECK_NA_ERROR(error, ret, "na_test_mpi_init() failed");
-    na_test_info->max_number_of_peers = MPIEXEC_MAX_NUMPROCS;
-#else
-    na_test_info->mpi_comm_rank = 0;
-    na_test_info->mpi_comm_size = 1;
-    na_test_info->max_number_of_peers = 1;
+
+#ifdef HG_TEST_HAS_CXI
+    if (na_test_info->key != NULL) {
+        ret = na_test_alloc_svc(&na_test_info->cxi_info, na_test_info->key);
+        NA_TEST_CHECK_NA_ERROR(error, ret, "na_test_alloc_svc() failed");
+
+        ret = na_test_print_svc(
+            &na_test_info->cxi_info, auth_key, sizeof(auth_key));
+        NA_TEST_CHECK_NA_ERROR(error, ret, "na_test_print_svc() failed");
+    }
 #endif
+
     if (na_test_info->max_classes == 0)
         na_test_info->max_classes = 1;
 
     /* Call cleanup before doing anything */
-    if (na_test_info->listen && na_test_info->mpi_comm_rank == 0)
+    if (na_test_info->listen && na_test_info->mpi_info.rank == 0)
         NA_Cleanup();
 
     if (na_test_info->busy_wait) {
         na_init_info.progress_mode = NA_NO_BLOCK;
-        if (na_test_info->mpi_comm_rank == 0)
+        if (na_test_info->mpi_info.rank == 0)
             printf("# Initializing NA in busy wait mode\n");
     }
+#ifdef HG_TEST_HAS_CXI
+    if (na_test_info->key != NULL)
+        na_init_info.auth_key = auth_key;
+#else
     na_init_info.auth_key = na_test_info->key;
+#endif
     if (na_test_info->max_contexts != 0)
         na_init_info.max_contexts = na_test_info->max_contexts;
     na_init_info.max_unexpected_size = (size_t) na_test_info->max_msg_size;
     na_init_info.max_expected_size = (size_t) na_test_info->max_msg_size;
     na_init_info.thread_mode =
         na_test_info->use_threads ? 0 : NA_THREAD_MODE_SINGLE;
+    if (na_test_info->tclass != NULL) {
+        na_init_info.traffic_class = na_test_tclass(na_test_info->tclass);
+        NA_TEST_CHECK_ERROR(na_init_info.traffic_class == NA_TC_UNSPEC, error,
+            ret, NA_PROTONOSUPPORT, "Unsupported traffic class");
+        if (na_test_info->mpi_info.rank == 0)
+            printf("# Using traffic class: %s\n", na_test_info->tclass);
+    }
 
     na_test_info->na_classes = (na_class_t **) malloc(
         sizeof(na_class_t *) * na_test_info->max_classes);
@@ -593,12 +655,12 @@ NA_Test_init(int argc, char *argv[], struct na_test_info *na_test_info)
     for (i = 0; i < na_test_info->max_classes; i++) {
         /* Generate NA init string and get config options */
         info_string = na_test_gen_config(na_test_info,
-            (unsigned int) (i + (unsigned int) na_test_info->mpi_comm_rank *
+            (unsigned int) (i + (unsigned int) na_test_info->mpi_info.rank *
                                     na_test_info->max_classes));
         NA_TEST_CHECK_ERROR(info_string == NULL, error, ret, NA_PROTOCOL_ERROR,
             "Could not generate config string");
 
-        if (na_test_info->mpi_comm_rank == 0)
+        if (na_test_info->mpi_info.rank == 0)
             printf("# Class %zu using info string: %s\n", i + 1, info_string);
 
         na_test_info->na_classes[i] =
@@ -614,28 +676,26 @@ NA_Test_init(int argc, char *argv[], struct na_test_info *na_test_info)
 
     if (na_test_info->listen && !na_test_info->extern_init) {
         for (i = 0; i < na_test_info->max_classes; i++) {
-            ret = na_test_self_addr_publish(na_test_info->na_classes[i], i > 0);
+            ret = na_test_self_addr_publish(
+                na_test_info->hostfile, na_test_info->na_classes[i], i > 0);
             NA_TEST_CHECK_NA_ERROR(
                 error, ret, "na_test_self_addr_publish() failed");
         }
 
-#ifdef HG_TEST_HAS_PARALLEL
         /* If static client must wait for server to write config file */
         if (na_test_info->mpi_static)
-            MPI_Barrier(MPI_COMM_WORLD);
-#endif
+            na_test_mpi_barrier_world();
     }
     /* Get config from file if self option is not passed */
     else if (!na_test_info->listen && !na_test_info->self_send) {
-#ifdef HG_TEST_HAS_PARALLEL
         /* If static client must wait for server to write config file */
         if (na_test_info->mpi_static)
-            MPI_Barrier(MPI_COMM_WORLD);
-#endif
-        if (na_test_info->mpi_comm_rank == 0) {
+            na_test_mpi_barrier_world();
+
+        if (na_test_info->mpi_info.rank == 0) {
             size_t count = 0;
 
-            ret = na_test_get_config(NULL, &count);
+            ret = na_test_get_config(na_test_info->hostfile, NULL, &count);
             NA_TEST_CHECK_NA_ERROR(error, ret,
                 "na_test_get_config() failed (%s)", NA_Error_to_string(ret));
             NA_TEST_CHECK_ERROR(count > UINT32_MAX, error, ret, NA_OVERFLOW,
@@ -643,48 +703,46 @@ NA_Test_init(int argc, char *argv[], struct na_test_info *na_test_info)
             na_test_info->max_targets = (uint32_t) count;
         }
 
-#ifdef HG_TEST_HAS_PARALLEL
-        if (na_test_info->mpi_comm_size > 1)
-            MPI_Bcast(&na_test_info->max_targets, 1, MPI_UINT32_T, 0,
-                na_test_info->mpi_comm);
-#endif
+        if (na_test_info->mpi_info.size > 1)
+            na_test_mpi_bcast(&na_test_info->mpi_info,
+                &na_test_info->max_targets, sizeof(uint32_t), 0);
 
         na_test_info->target_names = (char **) malloc(
             na_test_info->max_targets * sizeof(*na_test_info->target_names));
         NA_TEST_CHECK_ERROR(na_test_info->target_names == NULL, error, ret,
             NA_NOMEM, "Could not allocated target name array");
 
-        if (na_test_info->mpi_comm_rank == 0) {
+        if (na_test_info->mpi_info.rank == 0) {
             size_t count = na_test_info->max_targets;
 
-            ret = na_test_get_config(na_test_info->target_names, &count);
+            ret = na_test_get_config(
+                na_test_info->hostfile, na_test_info->target_names, &count);
             NA_TEST_CHECK_NA_ERROR(error, ret,
                 "na_test_get_config() failed (%s)", NA_Error_to_string(ret));
         }
 
-#ifdef HG_TEST_HAS_PARALLEL
-        if (na_test_info->mpi_comm_size > 1) {
+        if (na_test_info->mpi_info.size > 1) {
             uint32_t j;
 
             for (j = 0; j < na_test_info->max_targets; j++) {
                 char test_addr_name[NA_TEST_MAX_ADDR_NAME];
 
-                if (na_test_info->mpi_comm_rank == 0)
+                if (na_test_info->mpi_info.rank == 0)
                     strcpy(test_addr_name, na_test_info->target_names[j]);
 
-                MPI_Bcast(test_addr_name, NA_TEST_MAX_ADDR_NAME, MPI_BYTE, 0,
-                    na_test_info->mpi_comm);
+                na_test_mpi_bcast(&na_test_info->mpi_info, test_addr_name,
+                    NA_TEST_MAX_ADDR_NAME, 0);
 
-                if (na_test_info->mpi_comm_rank != 0) {
+                if (na_test_info->mpi_info.rank != 0) {
                     na_test_info->target_names[j] = strdup(test_addr_name);
                     NA_TEST_CHECK_ERROR(na_test_info->target_names[j] == NULL,
                         error, ret, NA_NOMEM, "strdup() of target_name failed");
                 }
             }
         }
-#endif
+
         na_test_info->target_name = na_test_info->target_names[0];
-        if (na_test_info->mpi_comm_rank == 0) {
+        if (na_test_info->mpi_info.rank == 0) {
             uint32_t j;
 
             printf("# %" PRIu32 " target name(s) read:\n",
@@ -750,13 +808,22 @@ NA_Test_finalize(struct na_test_info *na_test_info)
         na_test_info->domain = NULL;
     }
     if (na_test_info->key != NULL) {
+#ifdef HG_TEST_HAS_CXI
+        (void) na_test_free_svc(&na_test_info->cxi_info);
+#endif
         free(na_test_info->key);
         na_test_info->key = NULL;
     }
+    if (na_test_info->hostfile != NULL) {
+        free(na_test_info->hostfile);
+        na_test_info->hostfile = NULL;
+    }
+    if (na_test_info->tclass != NULL) {
+        free(na_test_info->tclass);
+        na_test_info->tclass = NULL;
+    }
 
-#ifdef HG_TEST_HAS_PARALLEL
-    na_test_mpi_finalize(na_test_info);
-#endif
+    na_test_mpi_finalize(&na_test_info->mpi_info);
 
 done:
     return ret;
@@ -766,26 +833,15 @@ done:
 void
 NA_Test_barrier(const struct na_test_info *na_test_info)
 {
-#ifdef HG_TEST_HAS_PARALLEL
-    if (na_test_info->mpi_comm_size > 1)
-        MPI_Barrier(na_test_info->mpi_comm);
-#else
-    (void) na_test_info;
-#endif
+    if (na_test_info->mpi_info.size > 1)
+        na_test_mpi_barrier(&na_test_info->mpi_info);
 }
 
 /*---------------------------------------------------------------------------*/
 void
 NA_Test_bcast(
-    char *buf, int count, int root, const struct na_test_info *na_test_info)
+    void *buf, size_t size, int root, const struct na_test_info *na_test_info)
 {
-#ifdef HG_TEST_HAS_PARALLEL
-    if (na_test_info->mpi_comm_size > 1)
-        MPI_Bcast(buf, count, MPI_BYTE, root, na_test_info->mpi_comm);
-#else
-    (void) na_test_info;
-    (void) count;
-    (void) root;
-    (void) buf;
-#endif
+    if (na_test_info->mpi_info.size > 1)
+        na_test_mpi_bcast(&na_test_info->mpi_info, buf, size, root);
 }

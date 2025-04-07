@@ -15,6 +15,7 @@
 /*************************************/
 
 /* Type definitions */
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -82,6 +83,7 @@ typedef hg_uint8_t hg_bool_t;
 
 /* Build Options */
 #cmakedefine HG_HAS_DEBUG
+#cmakedefine HG_HAS_DIAG
 
 /* Boost */
 #cmakedefine HG_HAS_BOOST

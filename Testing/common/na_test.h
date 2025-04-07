@@ -8,16 +8,22 @@
 #ifndef NA_TEST_H
 #define NA_TEST_H
 
-#include "mercury_test_config.h"
-#include "na.h"
+#include "na_test_mpi.h"
 
-#ifdef HG_TEST_HAS_PARALLEL
-#    include <mpi.h>
+#ifdef HG_TEST_HAS_CXI
+#    include <libcxi/libcxi.h>
 #endif
 
 /*************************************/
 /* Public Type and Struct Definition */
 /*************************************/
+
+#ifdef HG_TEST_HAS_CXI
+struct na_test_cxi_info {
+    struct cxil_dev *dev;
+    struct cxi_svc_desc svc_desc;
+};
+#endif
 
 struct na_test_info {
     na_class_t *na_class;    /* Default NA class */
@@ -27,12 +33,14 @@ struct na_test_info {
     char *comm;              /* Comm/Plugin name */
     char *domain;            /* Domain name */
     char *protocol;          /* Protocol name */
+    char *hostfile;          /* Hostfile */
     char *hostname;          /* Hostname */
     int port;                /* Port */
     bool listen;             /* Listen */
     bool mpi_static;         /* MPI static comm */
     bool self_send;          /* Self send */
     char *key;               /* Auth key */
+    char *tclass;            /* Traffic class */
     int loop;                /* Number of loops */
     bool busy_wait;          /* Busy wait */
     size_t max_classes;      /* Max classes */
@@ -43,13 +51,10 @@ struct na_test_info {
     size_t buf_size_max;     /* Max buffer size */
     size_t buf_count;        /* Buffer count */
     bool verbose;            /* Verbose mode */
-    int max_number_of_peers; /* Max number of peers */
-#ifdef HG_TEST_HAS_PARALLEL
-    MPI_Comm mpi_comm;    /* MPI comm */
-    bool mpi_no_finalize; /* Prevent from finalizing MPI */
+    struct na_test_mpi_info mpi_info;
+#ifdef HG_TEST_HAS_CXI
+    struct na_test_cxi_info cxi_info;
 #endif
-    int mpi_comm_rank;   /* MPI comm rank */
-    int mpi_comm_size;   /* MPI comm size */
     bool extern_init;    /* Extern init */
     bool use_threads;    /* Use threads */
     bool force_register; /* Force registration each iteration */
@@ -185,13 +190,13 @@ na_test_usage(const char *execname);
  * Set config file
  */
 na_return_t
-na_test_set_config(const char *addr_name, bool append);
+na_test_set_config(const char *hostfile, const char *addr_name, bool append);
 
 /**
  * Get config file
  */
 na_return_t
-na_test_get_config(char *addrs[], size_t *count_p);
+na_test_get_config(const char *hostfile, char *addrs[], size_t *count_p);
 
 /**
  * Initialize
@@ -216,7 +221,7 @@ NA_Test_barrier(const struct na_test_info *na_test_info);
  */
 void
 NA_Test_bcast(
-    char *buf, int count, int root, const struct na_test_info *na_test_info);
+    void *buf, size_t size, int root, const struct na_test_info *na_test_info);
 
 #ifdef __cplusplus
 }

@@ -51,28 +51,28 @@ hg_perf_run(const struct hg_test_info *hg_test_info,
 
     /* Warm up for RPC */
     for (i = 0; i < skip + (size_t) hg_test_info->na_test_info.loop; i++) {
-        struct hg_perf_request args = {
+        struct hg_perf_request request = {
             .expected_count = (int32_t) info->handle_max,
             .complete_count = 0,
-            .request = info->request};
+            .completed = HG_ATOMIC_VAR_INIT(0)};
         unsigned int j;
 
         if (i == skip) {
-            if (hg_test_info->na_test_info.mpi_comm_size > 1)
+            if (hg_test_info->na_test_info.mpi_info.size > 1)
                 NA_Test_barrier(&hg_test_info->na_test_info);
             hg_time_get_current(&t1);
         }
 
-        hg_request_reset(info->request);
-
         for (j = 0; j < info->handle_max; j++) {
-            ret = HG_Forward(
-                info->handles[j], hg_perf_request_complete, &args, &in_struct);
+            ret = HG_Forward(info->handles[j], hg_perf_request_complete,
+                &request, &in_struct);
             HG_TEST_CHECK_HG_ERROR(error, ret, "HG_Forward() failed (%s)",
                 HG_Error_to_string(ret));
         }
 
-        hg_request_wait(info->request, HG_MAX_IDLE_TIME, NULL);
+        ret = hg_perf_request_wait(info, &request, HG_MAX_IDLE_TIME, NULL);
+        HG_TEST_CHECK_HG_ERROR(error, ret, "hg_perf_request_wait() failed (%s)",
+            HG_Error_to_string(ret));
 
         if (info->verify && info->bidir) {
             for (j = 0; j < info->handle_max; j++) {
@@ -93,12 +93,12 @@ hg_perf_run(const struct hg_test_info *hg_test_info,
         }
     }
 
-    if (hg_test_info->na_test_info.mpi_comm_size > 1)
+    if (hg_test_info->na_test_info.mpi_info.size > 1)
         NA_Test_barrier(&hg_test_info->na_test_info);
 
     hg_time_get_current(&t2);
 
-    if (hg_test_info->na_test_info.mpi_comm_rank == 0)
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
         hg_perf_print_lat(
             hg_test_info, info, buf_size, hg_time_subtract(t2, t1));
 
@@ -126,17 +126,17 @@ main(int argc, char *argv[])
     info = &perf_info.class_info[0];
 
     /* Allocate RPC buffers */
-    hg_ret = hg_perf_rpc_buf_init(info);
+    hg_ret = hg_perf_rpc_buf_init(hg_test_info, info);
     HG_TEST_CHECK_HG_ERROR(error, hg_ret, "hg_perf_init_rpc_buf() failed (%s)",
         HG_Error_to_string(hg_ret));
 
     /* Set HG handles */
-    hg_ret = hg_perf_set_handles(info, HG_PERF_RATE);
+    hg_ret = hg_perf_set_handles(hg_test_info, info, HG_PERF_RATE);
     HG_TEST_CHECK_HG_ERROR(error, hg_ret, "hg_perf_set_handles() failed (%s)",
         HG_Error_to_string(hg_ret));
 
     /* Header info */
-    if (hg_test_info->na_test_info.mpi_comm_rank == 0)
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
         hg_perf_print_header_lat(hg_test_info, info, BENCHMARK_NAME);
 
     /* NULL RPC */
@@ -157,7 +157,7 @@ main(int argc, char *argv[])
     }
 
     /* Finalize interface */
-    if (hg_test_info->na_test_info.mpi_comm_rank == 0)
+    if (hg_test_info->na_test_info.mpi_info.rank == 0)
         hg_perf_send_done(info);
 
     hg_perf_cleanup(&perf_info);

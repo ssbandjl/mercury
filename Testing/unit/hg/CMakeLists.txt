@@ -163,7 +163,7 @@ function(add_mercury_test_comm_all test_name)
     if(NOT ((${comm} STREQUAL "bmi") OR (${comm} STREQUAL "mpi")))
       add_mercury_test_comm(${test_name} ${comm}
         "${NA_${upper_comm}_TESTING_PROTOCOL}"
-        "${NA_TESTING_NO_BLOCK}" ${MERCURY_TESTING_ENABLE_PARALLEL} true false)
+        "${NA_TESTING_NO_BLOCK}" false true false)
     endif()
     # Scalable test
     if(NOT APPLE)
@@ -223,11 +223,6 @@ build_mercury_test(lookup)
 build_mercury_test(proc)
 
 build_mercury_test(kill)
-
-# Cray DRC test
-if(NA_OFI_TESTING_USE_CRAY_DRC)
-  build_mercury_test(drc_auth)
-endif()
 
 add_mercury_test_standalone(proc)
 
