@@ -19,3 +19,15 @@
 ```
 
 
+## ofi cleanup monitor
+```c
+libfabric.so.1!ofi_monitor_cleanup(struct ofi_mem_monitor * monitor) (\root\project\net\libfabric\prov\util\src\util_mem_monitor.c:154)
+libfabric.so.1!ofi_monitors_cleanup() (\root\project\net\libfabric\prov\util\src\util_mem_monitor.c:341)
+libfabric.so.1!fi_fini() (\root\project\net\libfabric\src\fabric.c:1034)
+ld-linux-x86-64.so.2!_dl_fini() (\build\glibc-FcRMwW\glibc-2.31\elf\dl-fini.c:138)
+libc.so.6!__run_exit_handlers(int status, struct exit_function_list ** listp, _Bool run_list_atexit, _Bool run_dtors) (\build\glibc-FcRMwW\glibc-2.31\stdlib\exit.c:108)
+libc.so.6!__GI_exit(int status) (\build\glibc-FcRMwW\glibc-2.31\stdlib\exit.c:139)
+libc.so.6!__libc_start_main(int (*)(int, char **, char **) main, int argc, char ** argv, int (*)(int, char **, char **) init, void (*)(void) fini, void (*)(void) rtld_fini, void * stack_end) (\build\glibc-FcRMwW\glibc-2.31\csu\libc-start.c:342)
+_start() (\root\project\net\mercury\Examples\src\example_rpc_client.c:57)
+
+dddddddddd```
