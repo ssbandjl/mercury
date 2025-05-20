@@ -14,3 +14,14 @@ cd build/bin/
 echo -e "client:./05_hg_client_bulk \"verbs\" \"ofi+verbs;ofi_rxm://172.17.29.63:55555\" bulk1m"
 ./05_hg_server_bulk "ofi+verbs;ofi_rxm://172.17.29.63:55555" 
 # gdb --args 05_hg_server_bulk "ofi+verbs;ofi_rxm://192.169.29.63:55555"
+
+
+
+s117:
+export LD_LIBRARY_PATH=/root/project/rdma/dpu_user_rdma/build/lib
+export HUGE_PAGE_NUM=20
+export XT_CQ_INLINE_CQE=0
+export FI_UNIVERSE_SIZE=16
+export FI_LOG_LEVEL=debug
+export HG_LOG_LEVEL=debug
+./05_hg_server_bulk "ofi+verbs;ofi_rxm://192.168.2.117:55555"
