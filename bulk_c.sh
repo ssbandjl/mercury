@@ -14,3 +14,12 @@ export LD_LIBRARY_PATH=/opt/daos/prereq/debug/mercury/lib:$LD_LIBRARY_PATH
 # export FI_LOG_LEVEL=debug
 ./05_hg_client_bulk "verbs" "ofi+verbs;ofi_rxm://172.17.29.63:55555" ../bulk1m
 
+
+
+s118:
+dd if=/dev/zero of=bulk_file bs=1M count=500 oflag=direct
+export LD_LIBRARY_PATH=/root/project/rdma/rdma-core/build/lib
+export FI_UNIVERSE_SIZE=16
+export FI_LOG_LEVEL=debug
+export HG_LOG_LEVEL=debug
+./05_hg_client_bulk "verbs" "ofi+verbs;ofi_rxm://192.168.2.117:55555" ./bulk_file

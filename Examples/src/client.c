@@ -87,7 +87,7 @@ int main(int argc, char** argv)
     // Finalize the hg_class.
     hg_return_t err = HG_Finalize(state.hg_class);
     assert(err == HG_SUCCESS);
-    return 0;
+    return err;
 }
 
 /*
@@ -110,7 +110,7 @@ hg_return_t lookup_callback(const struct hg_cb_info *callback_info)
     fseek(file, 0L, SEEK_SET);
     save_op->buffer = calloc(1, save_op->size);
     size_t bytes_read = fread(save_op->buffer,1,save_op->size,file); // C 库函数 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) 从给定流 stream 读取数据到 ptr 所指向的数组中。
-
+    printf("Read %zu bytes from file %s\n", bytes_read, save_op->filename);
 
     fclose(file);
 
@@ -136,7 +136,7 @@ hg_return_t lookup_callback(const struct hg_cb_info *callback_info)
     ret = HG_Addr_free(state->hg_class, addr);
     assert(ret == HG_SUCCESS);
 
-    return HG_SUCCESS;
+    return ret;
 }
 
 hg_return_t save_completed(const struct hg_cb_info *info)
@@ -166,5 +166,5 @@ hg_return_t save_completed(const struct hg_cb_info *info)
 
     state->completed = 1;
 
-    return HG_SUCCESS;
+    return ret;
 }
