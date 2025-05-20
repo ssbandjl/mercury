@@ -108,7 +108,8 @@ hg_return_t save(hg_handle_t handle)
 
     ret = HG_Free_input(handle, &in);
     assert(ret == HG_SUCCESS);
-    return HG_SUCCESS;
+	
+    return ret;
 }
 
 hg_return_t save_bulk_completed(const struct hg_cb_info *info)
