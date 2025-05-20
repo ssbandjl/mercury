@@ -12,8 +12,11 @@ mkdir build
 cd build
 # ccmake ..
 
-export OFI_INCLUDE_DIR=/home/xb/project/libfabric/libfabric/build/include
-export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
+# export OFI_INCLUDE_DIR=/home/xb/project/libfabric/libfabric/build/include
+# export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
+
+
+cmake -DMERCURY_USE_CHECKSUMS=OFF -DCMAKE_INSTALL_PREFIX=/root/project/net/mercury/build -DBUILD_EXAMPLES=OFF -DMERCURY_USE_BOOST_PP=ON -DMERCURY_ENABLE_DEBUG=ON -DBUILD_TESTING=OFF -DNA_USE_OFI=ON -DBUILD_DOCUMENTATION=OFF -DBUILD_SHARED_LIBS=ON ../mercury -DOFI_INCLUDE_DIR=/opt/daos/prereq/debug/ofi/include -DOFI_LIBRARY=/opt/daos/prereq/debug/ofi/lib/libfabric.so
 cmake ..
 make && make install
 
