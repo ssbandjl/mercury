@@ -12,15 +12,6 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <stdlib.h>
-#include <sys/syscall.h>
-
-
-/* Debug with thread_id, function_name, file, line */
-#define dbg(format, arg...)							\
-	printf("tid:%ld, %s(), %s:%d, " format,					\
-		syscall(SYS_gettid), __FUNCTION__, __FILE__, __LINE__, ##arg)
-
 /* example server program.  Starts HG engine, registers the example RPC type,
  * and then executes indefinitely.
  */

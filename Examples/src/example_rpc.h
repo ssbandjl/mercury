@@ -10,6 +10,14 @@
 
 #include <mercury_macros.h>
 
+#include <stdlib.h>
+#include <sys/syscall.h>
+
+/* Debug with thread_id, function_name, file, line */
+#define dbg(format, arg...)							\
+	printf("tid:%ld, %s(), %s:%d, " format,					\
+		syscall(SYS_gettid), __FUNCTION__, __FILE__, __LINE__, ##arg)
+
 #ifdef HG_HAS_BOOST
 /* visible API for example RPC operation */
 MERCURY_GEN_PROC(my_rpc_out_t, ((int32_t) (ret)))
