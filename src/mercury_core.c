@@ -682,7 +682,7 @@ hg_core_addr_serialize(void *buf, hg_size_t buf_size, uint8_t flags,
 static hg_return_t
 hg_core_addr_deserialize(struct hg_core_private_class *hg_core_class,
     struct hg_core_private_addr **hg_core_addr_p, const void *buf,
-    hg_size_t buf_size);
+    hg_size_t buf_size, uint64_t flags);
 
 /**
  * Determine which NA component should be used.
@@ -3257,7 +3257,7 @@ error:
 static hg_return_t
 hg_core_addr_deserialize(struct hg_core_private_class *hg_core_class,
     struct hg_core_private_addr **hg_core_addr_p, const void *buf,
-    hg_size_t buf_size)
+    hg_size_t buf_size, uint64_t flags)
 {
     struct hg_core_private_addr *hg_core_addr = NULL;
     const char *buf_ptr = (const char *) buf;
@@ -3273,9 +3273,9 @@ hg_core_addr_deserialize(struct hg_core_private_class *hg_core_class,
         &hg_core_addr->na_addr_serialize_size, size_t);
 
     if (hg_core_addr->na_addr_serialize_size != 0) {
-        na_return_t na_ret =
-            NA_Addr_deserialize(hg_core_class->core_class.na_class,
-                &hg_core_addr->core_addr.na_addr, buf_ptr, buf_size_left);
+        na_return_t na_ret = NA_Addr_deserialize(
+            hg_core_class->core_class.na_class,
+            &hg_core_addr->core_addr.na_addr, buf_ptr, buf_size_left, flags);
         HG_CHECK_SUBSYS_ERROR(addr, na_ret != NA_SUCCESS, error, ret,
             (hg_return_t) na_ret, "Could not deserialize NA address (%s)",
             NA_Error_to_string(na_ret));
@@ -3291,9 +3291,9 @@ hg_core_addr_deserialize(struct hg_core_private_class *hg_core_class,
         &hg_core_addr->na_sm_addr_serialize_size, size_t);
 
     if (hg_core_addr->na_sm_addr_serialize_size != 0) {
-        na_return_t na_ret =
-            NA_Addr_deserialize(hg_core_class->core_class.na_sm_class,
-                &hg_core_addr->core_addr.na_sm_addr, buf_ptr, buf_size_left);
+        na_return_t na_ret = NA_Addr_deserialize(
+            hg_core_class->core_class.na_sm_class,
+            &hg_core_addr->core_addr.na_sm_addr, buf_ptr, buf_size_left, flags);
         HG_CHECK_SUBSYS_ERROR(addr, na_ret != NA_SUCCESS, error, ret,
             (hg_return_t) na_ret, "Could not deserialize NA SM address (%s)",
             NA_Error_to_string(na_ret));
@@ -4727,12 +4727,23 @@ hg_core_multi_recv_input_cb(const struct na_cb_info *callback_info)
     } else if (callback_info->ret == NA_CANCELED) {
         HG_LOG_SUBSYS_DEBUG(
             rpc, "NA_CANCELED event on multi-recv op %d", multi_recv_op->id);
-        hg_atomic_decr32(&context->multi_recv_op_count);
+        if (na_cb_info_multi_recv_unexpected->last) {
+            HG_LOG_SUBSYS_DEBUG(rpc,
+                "This is the last buffer of multi-recv op %d, marking as last",
+                multi_recv_op->id);
+            hg_atomic_set32(&multi_recv_op->last, true);
+            hg_atomic_decr32(&context->multi_recv_op_count);
+        }
     } else {
         HG_LOG_SUBSYS_ERROR(rpc, "NA callback returned error (%s)",
             NA_Error_to_string(callback_info->ret));
-        hg_atomic_decr32(&context->multi_recv_op_count);
-        /* TODO can an unexpected multi-recv operation ever fail? */
+        if (na_cb_info_multi_recv_unexpected->last) {
+            HG_LOG_SUBSYS_DEBUG(rpc,
+                "This is the last buffer of multi-recv op %d, marking as last",
+                multi_recv_op->id);
+            hg_atomic_set32(&multi_recv_op->last, true);
+            hg_atomic_decr32(&context->multi_recv_op_count);
+        }
     }
 
     return;
@@ -6742,7 +6753,7 @@ error:
 /*---------------------------------------------------------------------------*/
 hg_return_t
 HG_Core_addr_deserialize(hg_core_class_t *hg_core_class, hg_core_addr_t *addr_p,
-    const void *buf, hg_size_t buf_size)
+    const void *buf, hg_size_t buf_size, uint64_t flags)
 {
     hg_return_t ret;
 
@@ -6757,7 +6768,7 @@ HG_Core_addr_deserialize(hg_core_class_t *hg_core_class, hg_core_addr_t *addr_p,
 
     ret =
         hg_core_addr_deserialize((struct hg_core_private_class *) hg_core_class,
-            (struct hg_core_private_addr **) addr_p, buf, buf_size);
+            (struct hg_core_private_addr **) addr_p, buf, buf_size, flags);
     HG_CHECK_SUBSYS_HG_ERROR(addr, error, ret,
         "Could not deserialize address from (%p, %zu)", buf, (size_t) buf_size);
 

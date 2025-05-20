@@ -82,9 +82,10 @@ if(NA_USE_DYNAMIC_PLUGINS)
   if(NOT BUILD_SHARED_LIBS)
     message(FATAL_ERROR "Using dynamic plugins requires BUILD_SHARED_LIBS to be ON.")
   endif()
+  cmake_path(SET NA_PLUGIN_RELATIVE_PATH ${NA_INSTALL_PLUGIN_DIR})
+  cmake_path(RELATIVE_PATH NA_PLUGIN_RELATIVE_PATH BASE_DIRECTORY ${NA_INSTALL_LIB_DIR})
+  message(STATUS "NA plugin install directory: ${NA_INSTALL_PLUGIN_DIR} (relative path to libraries: ${NA_PLUGIN_RELATIVE_PATH})")
   set(NA_HAS_DYNAMIC_PLUGINS 1)
-  set(NA_DEFAULT_PLUGIN_PATH ${NA_INSTALL_PLUGIN_DIR} CACHE PATH "Default path used to load plugins.")
-  mark_as_advanced(NA_DEFAULT_PLUGIN_PATH)
 endif()
 
 # BMI
@@ -199,6 +200,16 @@ if(NA_USE_OFI)
       ${NA_OFI_INT_LIB_DEPENDENCIES}
     )
   endif()
+  check_c_source_compiles(
+    "
+    #include <rdma/fi_endpoint.h>
+    int main(void) {
+      (void) FI_OPT_FIREWALL_ADDR;
+      return 0;
+    }
+    "
+    NA_OFI_HAS_FIREWALL_ADDR
+  )
 endif()
 
 # UCX
