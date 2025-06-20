@@ -49,20 +49,24 @@ int
 main(int argc, char *argv[])
 {
     const char *svr_addr_string;
+    const char *provider_type;
     int i;
 
-    if (argc < 2) {
-        printf("Usage is: %s <svr address string>\n", argv[0]);
+    if (argc < 3) {
+        printf("Usage is: %s <svr address string> <tcp/verbs>\n", argv[0]);
         return (0);
     }
     svr_addr_string = argv[1];
+    provider_type = argv[2];
+
+    dbg("provider:%s, provider_type:%s\n", svr_addr_string, provider_type);
 
     /* start mercury and register RPC */
 
     /* NOTE: the address here is mainly used to identify the transport; this
      * is a client and will not be listening for requests.
      */
-    hg_engine_init(HG_FALSE, "tcp");
+    hg_engine_init(HG_FALSE, provider_type);
     my_rpc_id = my_rpc_register();
 
     /* issue 4 RPCs (these will proceed concurrently using callbacks) */

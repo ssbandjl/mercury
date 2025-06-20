@@ -9,6 +9,7 @@
 #define NA_TYPES_H
 
 #include "na_config.h"
+// #include "/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury.build/src/na/na_config.h"
 
 #include <limits.h>
 

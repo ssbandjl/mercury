@@ -1,0 +1,644 @@
+[root@node63 mercury]# mkdir build
+[root@node63 mercury]# cd build/
+[root@node63 build]# ll
+total 0
+[root@node63 build]# cmake ..
+-- The C compiler identification is GNU 4.8.5
+-- Check for working C compiler: /bin/cc
+-- Check for working C compiler: /bin/cc -- works
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Found Git: /bin/git (found version "1.8.3.1") 
+-- Could not use git to determine source version, using version 2.3.1rc1
+-- Configuring mercury v2.3.1rc1
+-- Setting build type to 'RelWithDebInfo' as none was specified.
+-- GCC detected, setting additional flags
+-- Performing Test ASAN_C_FLAG_SUPPORTED
+-- Performing Test ASAN_C_FLAG_SUPPORTED - Failed
+-- Asan flags are not supported by the C compiler.
+-- Performing Test TSAN_C_FLAG_SUPPORTED
+-- Performing Test TSAN_C_FLAG_SUPPORTED - Failed
+-- Asan flags are not supported by the C compiler.
+-- Performing Test UBSAN_C_FLAG_SUPPORTED
+-- Performing Test UBSAN_C_FLAG_SUPPORTED - Failed
+-- Ubsan flags are not supported by the C compiler.
+-- mercury_util v4.0.0
+-- Performing Test HG_UTIL_HAS_ATTR_CONSTRUCTOR_PRIORITY
+-- Performing Test HG_UTIL_HAS_ATTR_CONSTRUCTOR_PRIORITY - Success
+-- Looking for include file pthread.h
+-- Looking for include file pthread.h - found
+-- Looking for pthread_create
+-- Looking for pthread_create - not found
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - found
+-- Found Threads: TRUE  
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of pthread_spinlock_t
+-- Check size of pthread_spinlock_t - done
+-- Check size of PTHREAD_MUTEX_ADAPTIVE_NP
+-- Check size of PTHREAD_MUTEX_ADAPTIVE_NP - done
+-- Looking for pthread_condattr_setclock
+-- Looking for pthread_condattr_setclock - found
+-- Looking for include file time.h
+-- Looking for include file time.h - found
+-- Looking for clock_gettime
+-- Looking for clock_gettime - found
+-- Check size of CLOCK_MONOTONIC_COARSE
+-- Check size of CLOCK_MONOTONIC_COARSE - done
+-- Looking for include file sys/time.h
+-- Looking for include file sys/time.h - found
+-- Looking for include file sys/epoll.h
+-- Looking for include file sys/epoll.h - found
+-- Looking for include file sys/eventfd.h
+-- Looking for include file sys/eventfd.h - found
+-- Check size of eventfd_t
+-- Check size of eventfd_t - done
+-- Looking for include file sys/event.h
+-- Looking for include file sys/event.h - not found
+-- Looking for include file sys/param.h
+-- Looking for include file sys/param.h - found
+-- Looking for include file stdatomic.h
+-- Looking for include file stdatomic.h - not found
+-- Check size of atomic_long
+-- Check size of atomic_long - failed
+-- na v4.0.0
+-- Looking for process_vm_readv
+-- Looking for process_vm_readv - found
+CMake Warning at util/CMakeLists.txt:12 (find_package):
+  Could not find a package configuration file provided by "json-c" with any
+  of the following names:
+
+    json-cConfig.cmake
+    json-c-config.cmake
+
+  Add the installation prefix of "json-c" to CMAKE_PREFIX_PATH or set
+  "json-c_DIR" to a directory containing one of the above files.  If "json-c"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+
+
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/xb/project/mercury/build
+[root@node63 build]# make
+Scanning dependencies of target mercury_util
+[  3%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_atomic_queue.c.o
+[  6%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_dlog.c.o
+[  9%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_event.c.o
+[ 12%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_hash_table.c.o
+[ 16%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_log.c.o
+[ 19%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_mem.c.o
+[ 22%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_mem_pool.c.o
+[ 25%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_poll.c.o
+[ 29%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_request.c.o
+[ 32%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread.c.o
+[ 35%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_condition.c.o
+[ 38%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_mutex.c.o
+[ 41%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_pool.c.o
+[ 45%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_rwlock.c.o
+[ 48%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_spin.c.o
+[ 51%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_util.c.o
+Linking C static library ../../bin/libmercury_util.a
+[ 51%] Built target mercury_util
+Scanning dependencies of target na
+[ 54%] Building C object src/na/CMakeFiles/na.dir/na.c.o
+[ 58%] Building C object src/na/CMakeFiles/na.dir/na_ip.c.o
+[ 61%] Building C object src/na/CMakeFiles/na.dir/na_loc.c.o
+[ 64%] Building C object src/na/CMakeFiles/na.dir/na_sm.c.o
+/home/xb/project/mercury/src/na/na_sm.c: In function ‘na_sm_endpoint_open’:
+/home/xb/project/mercury/src/na/na_sm.c:2133:5: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+     NA_CHECK_SUBSYS_ERROR(fatal, addr_key.id > UINT8_MAX, error, ret,
+     ^
+In function ‘na_sm_msg_recv_unexpected’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+In function ‘na_sm_cancel’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+In function ‘na_sm_rma’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+In function ‘na_sm_msg_send’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+Linking C static library ../../bin/libna.a
+[ 64%] Built target na
+Scanning dependencies of target mercury
+[ 67%] Building C object src/CMakeFiles/mercury.dir/mercury.c.o
+[ 70%] Building C object src/CMakeFiles/mercury.dir/mercury_bulk.c.o
+[ 74%] Building C object src/CMakeFiles/mercury.dir/mercury_core.c.o
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_send_ack’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4729:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_forward_self’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4839:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_self_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4811:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_recv_input_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4358:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_multi_recv_input_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4446:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+[ 77%] Building C object src/CMakeFiles/mercury.dir/mercury_core_header.c.o
+[ 80%] Building C object src/CMakeFiles/mercury.dir/mercury_header.c.o
+[ 83%] Building C object src/CMakeFiles/mercury.dir/mercury_proc.c.o
+[ 87%] Building C object src/CMakeFiles/mercury.dir/mercury_proc_bulk.c.o
+[ 90%] Building C object src/CMakeFiles/mercury.dir/proc_extra/mercury_proc_string.c.o
+[ 93%] Building C object src/CMakeFiles/mercury.dir/proc_extra/mercury_string_object.c.o
+Linking C static library ../bin/libmercury.a
+[ 93%] Built target mercury
+Scanning dependencies of target hg_info
+[ 96%] Building C object util/CMakeFiles/hg_info.dir/info.c.o
+[100%] Building C object util/CMakeFiles/hg_info.dir/getopt.c.o
+Linking C executable ../bin/hg_info
+[100%] Built target hg_info
+[root@node63 build]# make install
+[ 51%] Built target mercury_util
+[ 64%] Built target na
+[ 93%] Built target mercury
+[100%] Built target hg_info
+Install the project...
+-- Install configuration: "RelWithDebInfo"
+-- Installing: /usr/local/share/cmake/mercury/mercury-config.cmake
+-- Installing: /usr/local/share/cmake/mercury/mercury-config-version.cmake
+-- Installing: /usr/local/lib/libmercury.a
+-- Installing: /usr/local/include/mercury_config.h
+-- Up-to-date: /usr/local/include/mercury.h
+-- Up-to-date: /usr/local/include/mercury_bulk.h
+-- Up-to-date: /usr/local/include/mercury_core.h
+-- Up-to-date: /usr/local/include/mercury_core_header.h
+-- Up-to-date: /usr/local/include/mercury_core_types.h
+-- Up-to-date: /usr/local/include/mercury_header.h
+-- Up-to-date: /usr/local/include/mercury_macros.h
+-- Up-to-date: /usr/local/include/mercury_proc_bulk.h
+-- Up-to-date: /usr/local/include/mercury_proc.h
+-- Up-to-date: /usr/local/include/mercury_types.h
+-- Up-to-date: /usr/local/include/mercury_proc_string.h
+-- Up-to-date: /usr/local/include/mercury_string_object.h
+-- Installing: /usr/local/share/cmake/mercury/mercury-targets.cmake
+-- Installing: /usr/local/share/cmake/mercury/mercury-targets-relwithdebinfo.cmake
+-- Installing: /usr/local/lib/pkgconfig/mercury.pc
+-- Installing: /usr/local/lib/libmercury_util.a
+-- Installing: /usr/local/include/mercury_util_config.h
+-- Up-to-date: /usr/local/include/mercury_atomic.h
+-- Up-to-date: /usr/local/include/mercury_atomic_queue.h
+-- Up-to-date: /usr/local/include/mercury_byteswap.h
+-- Up-to-date: /usr/local/include/mercury_compiler_attributes.h
+-- Up-to-date: /usr/local/include/mercury_dl.h
+-- Up-to-date: /usr/local/include/mercury_dlog.h
+-- Up-to-date: /usr/local/include/mercury_event.h
+-- Up-to-date: /usr/local/include/mercury_hash_string.h
+-- Up-to-date: /usr/local/include/mercury_hash_table.h
+-- Up-to-date: /usr/local/include/mercury_inet.h
+-- Up-to-date: /usr/local/include/mercury_list.h
+-- Up-to-date: /usr/local/include/mercury_log.h
+-- Up-to-date: /usr/local/include/mercury_mem.h
+-- Up-to-date: /usr/local/include/mercury_mem_pool.h
+-- Up-to-date: /usr/local/include/mercury_param.h
+-- Up-to-date: /usr/local/include/mercury_poll.h
+-- Up-to-date: /usr/local/include/mercury_queue.h
+-- Up-to-date: /usr/local/include/mercury_request.h
+-- Up-to-date: /usr/local/include/mercury_thread.h
+-- Up-to-date: /usr/local/include/mercury_thread_annotation.h
+-- Up-to-date: /usr/local/include/mercury_thread_condition.h
+-- Up-to-date: /usr/local/include/mercury_thread_mutex.h
+-- Up-to-date: /usr/local/include/mercury_thread_pool.h
+-- Up-to-date: /usr/local/include/mercury_thread_rwlock.h
+-- Up-to-date: /usr/local/include/mercury_thread_spin.h
+-- Up-to-date: /usr/local/include/mercury_time.h
+-- Up-to-date: /usr/local/include/mercury_util.h
+-- Installing: /usr/local/lib/pkgconfig/mercury_util.pc
+-- Installing: /usr/local/lib/libna.a
+-- Installing: /usr/local/include/na_config.h
+-- Up-to-date: /usr/local/include/na.h
+-- Up-to-date: /usr/local/include/na_types.h
+-- Up-to-date: /usr/local/include/na_sm.h
+-- Installing: /usr/local/lib/pkgconfig/na.pc
+-- Installing: /usr/local/bin/hg_info
+-- Set runtime path of "/usr/local/bin/hg_info" to "/usr/local/lib"
+[root@node63 build]# 
+
+
+
+with boost:
+[root@node63 mercury]# ./build.sh 
+-- The C compiler identification is GNU 4.8.5
+-- Check for working C compiler: /bin/cc
+-- Check for working C compiler: /bin/cc -- works
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Found Git: /bin/git (found version "1.8.3.1") 
+-- Could not use git to determine source version, using version 2.3.1rc1
+-- Configuring mercury v2.3.1rc1
+-- Setting build type to 'RelWithDebInfo' as none was specified.
+-- GCC detected, setting additional flags
+-- Performing Test ASAN_C_FLAG_SUPPORTED
+-- Performing Test ASAN_C_FLAG_SUPPORTED - Failed
+-- Asan flags are not supported by the C compiler.
+-- Performing Test TSAN_C_FLAG_SUPPORTED
+-- Performing Test TSAN_C_FLAG_SUPPORTED - Failed
+-- Asan flags are not supported by the C compiler.
+-- Performing Test UBSAN_C_FLAG_SUPPORTED
+-- Performing Test UBSAN_C_FLAG_SUPPORTED - Failed
+-- Ubsan flags are not supported by the C compiler.
+-- mercury_util v4.0.0
+-- Performing Test HG_UTIL_HAS_ATTR_CONSTRUCTOR_PRIORITY
+-- Performing Test HG_UTIL_HAS_ATTR_CONSTRUCTOR_PRIORITY - Success
+-- Looking for include file pthread.h
+-- Looking for include file pthread.h - found
+-- Looking for pthread_create
+-- Looking for pthread_create - not found
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - found
+-- Found Threads: TRUE  
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of pthread_spinlock_t
+-- Check size of pthread_spinlock_t - done
+-- Check size of PTHREAD_MUTEX_ADAPTIVE_NP
+-- Check size of PTHREAD_MUTEX_ADAPTIVE_NP - done
+-- Looking for pthread_condattr_setclock
+-- Looking for pthread_condattr_setclock - found
+-- Looking for include file time.h
+-- Looking for include file time.h - found
+-- Looking for clock_gettime
+-- Looking for clock_gettime - found
+-- Check size of CLOCK_MONOTONIC_COARSE
+-- Check size of CLOCK_MONOTONIC_COARSE - done
+-- Looking for include file sys/time.h
+-- Looking for include file sys/time.h - found
+-- Looking for include file sys/epoll.h
+-- Looking for include file sys/epoll.h - found
+-- Looking for include file sys/eventfd.h
+-- Looking for include file sys/eventfd.h - found
+-- Check size of eventfd_t
+-- Check size of eventfd_t - done
+-- Looking for include file sys/event.h
+-- Looking for include file sys/event.h - not found
+-- Looking for include file sys/param.h
+-- Looking for include file sys/param.h - found
+-- Looking for include file stdatomic.h
+-- Looking for include file stdatomic.h - not found
+-- Check size of atomic_long
+-- Check size of atomic_long - failed
+-- na v4.0.0
+-- Looking for process_vm_readv
+-- Looking for process_vm_readv - found
+CMake Warning at util/CMakeLists.txt:12 (find_package):
+  Could not find a package configuration file provided by "json-c" with any
+  of the following names:
+
+    json-cConfig.cmake
+    json-c-config.cmake
+
+  Add the installation prefix of "json-c" to CMAKE_PREFIX_PATH or set
+  "json-c_DIR" to a directory containing one of the above files.  If "json-c"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+
+
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/xb/project/mercury/build
+Scanning dependencies of target mercury_util
+[  3%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_atomic_queue.c.o
+[  6%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_dlog.c.o
+[  9%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_event.c.o
+[ 12%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_hash_table.c.o
+[ 15%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_log.c.o
+[ 18%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_mem.c.o
+[ 21%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_mem_pool.c.o
+[ 25%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_poll.c.o
+[ 28%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_request.c.o
+[ 31%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread.c.o
+[ 34%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_condition.c.o
+[ 37%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_mutex.c.o
+[ 40%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_pool.c.o
+[ 43%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_rwlock.c.o
+[ 46%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_thread_spin.c.o
+[ 50%] Building C object src/util/CMakeFiles/mercury_util.dir/mercury_util.c.o
+Linking C static library ../../bin/libmercury_util.a
+[ 50%] Built target mercury_util
+Scanning dependencies of target na
+[ 53%] Building C object src/na/CMakeFiles/na.dir/na.c.o
+[ 56%] Building C object src/na/CMakeFiles/na.dir/na_ip.c.o
+[ 59%] Building C object src/na/CMakeFiles/na.dir/na_loc.c.o
+[ 62%] Building C object src/na/CMakeFiles/na.dir/na_sm.c.o
+/home/xb/project/mercury/src/na/na_sm.c: In function ‘na_sm_endpoint_open’:
+/home/xb/project/mercury/src/na/na_sm.c:2133:5: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+     NA_CHECK_SUBSYS_ERROR(fatal, addr_key.id > UINT8_MAX, error, ret,
+     ^
+In function ‘na_sm_msg_recv_unexpected’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+/home/xb/project/mercury/src/na/na_sm.c: In function ‘na_sm_msg_send_post’:
+/home/xb/project/mercury/src/na/na_sm.c:2534:1: warning: inlining failed in call to ‘na_sm_queue_pair_release’: call is unlikely and code size would grow [-Winline]
+ na_sm_queue_pair_release(struct na_sm_region *na_sm_region, uint8_t index)
+ ^
+/home/xb/project/mercury/src/na/na_sm.c:2834:37: warning: called from here [-Winline]
+             na_sm_queue_pair_release(
+                                     ^
+/home/xb/project/mercury/src/na/na_sm.c:3235:1: warning: inlining failed in call to ‘na_sm_buf_release’: call is unlikely and code size would grow [-Winline]
+ na_sm_buf_release(struct na_sm_copy_buf *na_sm_copy_buf, unsigned int index)
+ ^
+/home/xb/project/mercury/src/na/na_sm.c:3188:26: warning: called from here [-Winline]
+         na_sm_buf_release(&na_sm_addr->shared_region->copy_bufs, buf_idx);
+                          ^
+In function ‘na_sm_cancel’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+In function ‘na_sm_rma’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+In function ‘na_sm_msg_send’:
+/home/xb/project/mercury/src/na/na_sm.c:4220:1: warning: inlining failed in call to ‘na_sm_complete_signal.part.0’: call is unlikely and code size would grow [-Winline]
+ na_sm_complete_signal(struct na_sm_class *na_sm_class)
+ ^
+cc1: warning: called from here [-Winline]
+/home/xb/project/mercury/src/na/na_sm.c: In function ‘na_sm_endpoint_open’:
+/home/xb/project/mercury/src/na/na_sm.c:2534:1: warning: inlining failed in call to ‘na_sm_queue_pair_release’: call is unlikely and code size would grow [-Winline]
+ na_sm_queue_pair_release(struct na_sm_region *na_sm_region, uint8_t index)
+ ^
+/home/xb/project/mercury/src/na/na_sm.c:2331:33: warning: called from here [-Winline]
+         na_sm_queue_pair_release(shared_region, queue_pair_idx);
+                                 ^
+/home/xb/project/mercury/src/na/na_sm.c: In function ‘na_sm_progress_rx_queue’:
+/home/xb/project/mercury/src/na/na_sm.c:3235:1: warning: inlining failed in call to ‘na_sm_buf_release’: call is unlikely and code size would grow [-Winline]
+ na_sm_buf_release(struct na_sm_copy_buf *na_sm_copy_buf, unsigned int index)
+ ^
+/home/xb/project/mercury/src/na/na_sm.c:4039:30: warning: called from here [-Winline]
+             na_sm_buf_release(
+                              ^
+Linking C static library ../../bin/libna.a
+[ 62%] Built target na
+Scanning dependencies of target mercury
+[ 65%] Building C object src/CMakeFiles/mercury.dir/mercury.c.o
+[ 68%] Building C object src/CMakeFiles/mercury.dir/mercury_bulk.c.o
+[ 71%] Building C object src/CMakeFiles/mercury.dir/mercury_core.c.o
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_send_ack’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4729:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_forward_self’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4839:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_self_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4811:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_recv_input_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4358:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+/home/xb/project/mercury/src/mercury_core.c: In function ‘hg_core_multi_recv_input_cb’:
+/home/xb/project/mercury/src/mercury_core.c:4892:1: warning: inlining failed in call to ‘hg_core_complete_op’: call is unlikely and code size would grow [-Winline]
+ hg_core_complete_op(struct hg_core_private_handle *hg_core_handle)
+ ^
+/home/xb/project/mercury/src/mercury_core.c:4446:24: warning: called from here [-Winline]
+     hg_core_complete_op(hg_core_handle);
+                        ^
+[ 75%] Building C object src/CMakeFiles/mercury.dir/mercury_core_header.c.o
+[ 78%] Building C object src/CMakeFiles/mercury.dir/mercury_header.c.o
+[ 81%] Building C object src/CMakeFiles/mercury.dir/mercury_proc.c.o
+[ 84%] Building C object src/CMakeFiles/mercury.dir/mercury_proc_bulk.c.o
+[ 87%] Building C object src/CMakeFiles/mercury.dir/proc_extra/mercury_proc_string.c.o
+[ 90%] Building C object src/CMakeFiles/mercury.dir/proc_extra/mercury_string_object.c.o
+Linking C static library ../bin/libmercury.a
+[ 90%] Built target mercury
+Scanning dependencies of target examples
+[ 93%] Build examples as a separate project
+Not searching for unused variables given on the command line.
+Not searching for unused variables given on the command line.
+Internal cmake changing into directory: /home/xb/project/mercury/build/Examples
+======== CMake output     ======
+The C compiler identification is GNU 4.8.5
+Check for working C compiler: /bin/cc
+Configuring
+Check for working C compiler: /bin/cc -- works
+Detecting C compiler ABI info
+Configuring
+Detecting C compiler ABI info - done
+Configuring
+Found PkgConfig: /bin/pkg-config (found version "0.27.1") 
+checking for module 'snappy'
+  package 'snappy' not found
+Could NOT find SNAPPY (missing:  SNAPPY_INCLUDE_DIR SNAPPY_LIBRARY) 
+Could not find Snappy.
+Configuring
+Configuring
+Configuring done
+Generating
+Generating
+Generating done
+Build files have been written to: /home/xb/project/mercury/build/Examples
+Configuring
+checking for module 'snappy'
+  package 'snappy' not found
+Could NOT find SNAPPY (missing:  SNAPPY_INCLUDE_DIR SNAPPY_LIBRARY) 
+Could not find Snappy.
+Configuring
+Configuring
+Configuring done
+Generating
+Generating
+Generating done
+Build files have been written to: /home/xb/project/mercury/build/Examples
+======== End CMake output ======
+Change Dir: /home/xb/project/mercury/build/Examples
+
+Run Build Command:/bin/gmake
+gmake[3]: Entering directory `/home/xb/project/mercury/build/Examples'
+gmake[4]: Entering directory `/home/xb/project/mercury/build/Examples'
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+Scanning dependencies of target 05_hg_client_bulk
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+[ 12%] Building C object src/CMakeFiles/05_hg_client_bulk.dir/client.c.o
+/home/xb/project/mercury/Examples/src/client.c: In function ‘main’:
+/home/xb/project/mercury/Examples/src/client.c:81:17: warning: unused variable ‘err’ [-Wunused-variable]
+     hg_return_t err = HG_Finalize(state.hg_class);
+                 ^
+/home/xb/project/mercury/Examples/src/client.c: In function ‘lookup_callback’:
+/home/xb/project/mercury/Examples/src/client.c:105:12: warning: unused variable ‘bytes_read’ [-Wunused-variable]
+     size_t bytes_read = fread(save_op->buffer,1,save_op->size,file); // C 库函数 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) 从给定流 stream 读取数据到 ptr 所指向的数组中。
+            ^
+/home/xb/project/mercury/Examples/src/client.c:91:17: warning: variable ‘ret’ set but not used [-Wunused-but-set-variable]
+     hg_return_t ret;
+                 ^
+/home/xb/project/mercury/Examples/src/client.c: In function ‘save_completed’:
+/home/xb/project/mercury/Examples/src/client.c:137:17: warning: variable ‘ret’ set but not used [-Wunused-but-set-variable]
+     hg_return_t ret;
+                 ^
+Linking C executable /home/xb/project/mercury/build/bin/05_hg_client_bulk
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+[ 12%] Built target 05_hg_client_bulk
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+Scanning dependencies of target 05_hg_server_bulk
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+[ 25%] Building C object src/CMakeFiles/05_hg_server_bulk.dir/server.c.o
+/home/xb/project/mercury/Examples/src/server.c: In function ‘save’:
+/home/xb/project/mercury/Examples/src/server.c:78:17: warning: variable ‘ret’ set but not used [-Wunused-but-set-variable]
+     hg_return_t ret;
+                 ^
+Linking C executable /home/xb/project/mercury/build/bin/05_hg_server_bulk
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+[ 25%] Built target 05_hg_server_bulk
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+Scanning dependencies of target hg_example_rpc_client
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+[ 37%] Building C object src/CMakeFiles/hg_example_rpc_client.dir/example_rpc.c.o
+[ 50%] Building C object src/CMakeFiles/hg_example_rpc_client.dir/example_rpc_engine.c.o
+[ 62%] Building C object src/CMakeFiles/hg_example_rpc_client.dir/example_rpc_client.c.o
+Linking C executable /home/xb/project/mercury/build/bin/hg_example_rpc_client
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+[ 62%] Built target hg_example_rpc_client
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+Scanning dependencies of target hg_example_rpc_server
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+gmake[5]: Entering directory `/home/xb/project/mercury/build/Examples'
+[ 75%] Building C object src/CMakeFiles/hg_example_rpc_server.dir/example_rpc.c.o
+[ 87%] Building C object src/CMakeFiles/hg_example_rpc_server.dir/example_rpc_engine.c.o
+[100%] Building C object src/CMakeFiles/hg_example_rpc_server.dir/example_rpc_server.c.o
+Linking C executable /home/xb/project/mercury/build/bin/hg_example_rpc_server
+gmake[5]: Leaving directory `/home/xb/project/mercury/build/Examples'
+[100%] Built target hg_example_rpc_server
+gmake[4]: Leaving directory `/home/xb/project/mercury/build/Examples'
+gmake[3]: Leaving directory `/home/xb/project/mercury/build/Examples'
+[ 93%] Built target examples
+Scanning dependencies of target hg_info
+[ 96%] Building C object util/CMakeFiles/hg_info.dir/info.c.o
+[100%] Building C object util/CMakeFiles/hg_info.dir/getopt.c.o
+Linking C executable ../bin/hg_info
+[100%] Built target hg_info
+[ 50%] Built target mercury_util
+[ 62%] Built target na
+[ 90%] Built target mercury
+[ 93%] Built target examples
+[100%] Built target hg_info
+Install the project...
+-- Install configuration: "RelWithDebInfo"
+-- Installing: /usr/local/share/cmake/mercury/mercury-config.cmake
+-- Installing: /usr/local/share/cmake/mercury/mercury-config-version.cmake
+-- Installing: /usr/local/include/boost
+-- Installing: /usr/local/lib/libmercury.a
+-- Installing: /usr/local/include/mercury_config.h
+-- Up-to-date: /usr/local/include/mercury.h
+-- Up-to-date: /usr/local/include/mercury_bulk.h
+-- Up-to-date: /usr/local/include/mercury_core.h
+-- Up-to-date: /usr/local/include/mercury_core_header.h
+-- Up-to-date: /usr/local/include/mercury_core_types.h
+-- Up-to-date: /usr/local/include/mercury_header.h
+-- Up-to-date: /usr/local/include/mercury_macros.h
+-- Up-to-date: /usr/local/include/mercury_proc_bulk.h
+-- Up-to-date: /usr/local/include/mercury_proc.h
+-- Up-to-date: /usr/local/include/mercury_types.h
+-- Up-to-date: /usr/local/include/mercury_proc_string.h
+-- Up-to-date: /usr/local/include/mercury_string_object.h
+-- Installing: /usr/local/share/cmake/mercury/mercury-targets.cmake
+-- Installing: /usr/local/share/cmake/mercury/mercury-targets-relwithdebinfo.cmake
+-- Installing: /usr/local/lib/pkgconfig/mercury.pc
+-- Installing: /usr/local/lib/libmercury_util.a
+-- Installing: /usr/local/include/mercury_util_config.h
+-- Up-to-date: /usr/local/include/mercury_atomic.h
+-- Up-to-date: /usr/local/include/mercury_atomic_queue.h
+-- Up-to-date: /usr/local/include/mercury_byteswap.h
+-- Up-to-date: /usr/local/include/mercury_compiler_attributes.h
+-- Up-to-date: /usr/local/include/mercury_dl.h
+-- Up-to-date: /usr/local/include/mercury_dlog.h
+-- Up-to-date: /usr/local/include/mercury_event.h
+-- Up-to-date: /usr/local/include/mercury_hash_string.h
+-- Up-to-date: /usr/local/include/mercury_hash_table.h
+-- Up-to-date: /usr/local/include/mercury_inet.h
+-- Up-to-date: /usr/local/include/mercury_list.h
+-- Up-to-date: /usr/local/include/mercury_log.h
+-- Up-to-date: /usr/local/include/mercury_mem.h
+-- Up-to-date: /usr/local/include/mercury_mem_pool.h
+-- Up-to-date: /usr/local/include/mercury_param.h
+-- Up-to-date: /usr/local/include/mercury_poll.h
+-- Up-to-date: /usr/local/include/mercury_queue.h
+-- Up-to-date: /usr/local/include/mercury_request.h
+-- Up-to-date: /usr/local/include/mercury_thread.h
+-- Up-to-date: /usr/local/include/mercury_thread_annotation.h
+-- Up-to-date: /usr/local/include/mercury_thread_condition.h
+-- Up-to-date: /usr/local/include/mercury_thread_mutex.h
+-- Up-to-date: /usr/local/include/mercury_thread_pool.h
+-- Up-to-date: /usr/local/include/mercury_thread_rwlock.h
+-- Up-to-date: /usr/local/include/mercury_thread_spin.h
+-- Up-to-date: /usr/local/include/mercury_time.h
+-- Up-to-date: /usr/local/include/mercury_util.h
+-- Installing: /usr/local/lib/pkgconfig/mercury_util.pc
+-- Installing: /usr/local/lib/libna.a
+-- Installing: /usr/local/include/na_config.h
+-- Up-to-date: /usr/local/include/na.h
+-- Up-to-date: /usr/local/include/na_types.h
+-- Up-to-date: /usr/local/include/na_sm.h
+-- Installing: /usr/local/lib/pkgconfig/na.pc
+-- Installing: /usr/local/bin/hg_info
+-- Set runtime path of "/usr/local/bin/hg_info" to "/usr/local/lib"
+[root@node63 mercury]# 
+

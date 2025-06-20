@@ -1,0 +1,73 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "hg_example_rpc_client",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/build/bin/hg_example_rpc_client",
+			"args": ["\"ofi+verbs;ofi_rxm://192.168.1.11:12345\"", "verbs"],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/build/bin/",
+			"environment": [
+				{"name": "LD_LIBRARY_PATH", "value": "/root/project/rdma/dpu_user_rdma/build/lib"},
+				{"name": "HUGE_PAGE_NUM", "value": "20"},
+				{"name": "XT_CQ_INLINE_CQE", "value": "0"},
+				{"name": "FI_UNIVERSE_SIZE", "value": "16"},
+				// {"name": "FI_LOG_LEVEL", "value": "debug"},
+				// {"name": "HG_LOG_LEVEL", "value": "debug"},
+			],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/bin/gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+        // ./05_hg_client_bulk "verbs" "ofi+verbs;ofi_rxm://192.168.2.117:55555" ./bulk_file
+		{
+			"name": "05_hg_client_bulk",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/build/bin/05_hg_client_bulk",
+			"args": ["verbs", "\"ofi+verbs;ofi_rxm://192.168.1.11:12345\"", "/root/project/net/mercury/build/bin/bulk_file"],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/build/bin/",
+			"environment": [
+				{"name": "LD_LIBRARY_PATH", "value": "/root/project/rdma/dpu_user_rdma/build/lib"},
+				{"name": "HUGE_PAGE_NUM", "value": "20"},
+				{"name": "XT_CQ_INLINE_CQE", "value": "0"},
+				{"name": "FI_UNIVERSE_SIZE", "value": "16"},
+				// {"name": "FI_LOG_LEVEL", "value": "debug"},
+				// {"name": "HG_LOG_LEVEL", "value": "debug"},
+			],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/bin/gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				},
+				{
+					"description": "Set Disassembly Flavor to Intel",
+					"text": "-gdb-set disassembly-flavor intel",
+					"ignoreFailures": true
+				}
+			]
+		},
+	]
+}
