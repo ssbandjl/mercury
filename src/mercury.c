@@ -2250,6 +2250,9 @@ HG_Trigger(hg_context_t *context, unsigned int timeout, unsigned int max_count,
 {
     hg_return_t ret;
 
+    if (!context)
+        abort();
+
     HG_CHECK_SUBSYS_ERROR(
         poll, context == NULL, done, ret, HG_INVALID_ARG, "NULL HG context");
 

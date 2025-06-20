@@ -9,7 +9,9 @@
 #define MERCURY_CORE_TYPES_H
 
 #include "mercury_config.h"
+// #include "/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury.build/src/mercury_config.h"
 #include "na_types.h"
+// #include "/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/src/na/na_types.h"
 
 /*************************************/
 /* Public Type and Struct Definition */

@@ -1,0 +1,313 @@
+https://github.com/ssbandjl/mercury.git
+https://github.com/mercury-hpc/mercury
+git fetch upstream
+git merge upstream/master
+
+
+术语:
+Bidirectional communication 双向通信
+
+
+
+UCX 插件也可用作 libfabric 不可用或不建议使用的平台上的替代传输，当前支持的协议是 tcp 和动词, MPI 和 BMI (tcp) 插件仍然受支持，但逐渐被弃用，因此只能用作后备方法。 CCI 插件已弃用且不再受支持, 编译和运行 Mercury 需要各种软件包的最新版本。 请注意，使用这些软件包的过旧版本可能会导致很难追踪的间接错误, 
+
+fi_cq_open
+
+注册内存:
+参考daos: C:\Users\s30893\project\stor\storage\daos\daos.drawio
+...
+na_ofi_initialize
+  na_ofi_class->send_pool = hg_mem_pool_create(pool_chunk_size ... na_ofi_mem_buf_register 注册初始内存池
+  na_ofi_class->recv_pool = hg_mem_pool_create -> hg_mem_pool_create(size_t chunk_size
+    struct hg_mem_pool_block *hg_mem_pool_block = hg_mem_pool_block_alloc register_func
+      int rc = register_func(mem_ptr, block_size, flags, &mr_handle, arg) -> na_ofi_mem_buf_register -> na_ofi_mem_buf_register(const void *buf
+        rc = fi_mr_reg(na_ofi_class->domain->fi_domain, buf, len, access,
+
+  
+编译bulk:
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib64/:/opt/daos/prereq/debug/mercury/lib/:/opt/daos/prereq/debug/mercury/include/
+export C_INCLUDE_PATH=$C_INCLUDE_PATH:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury.build/src/na:/home/xb/project/stor/daos/origindocker/daos/build/external/debug/mercury.build/src:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/src:/home/xb/project/stor/daos/origindocker/daos/build/external/debug/mercury/src/na:/home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/src/util:/home/xb/project/stor/daosorigin/docker/daos/build/external/debug/mercury/src/proc_extra
+
+cd /home/xb/project/stor/daos/origin/docker/daos/build/external/debug/mercury/mercury/05_bulk
+make
+
+daos同步:
+rsync -rapvu /opt/daos root@182.200.53.61:/opt/
+
+
+bulk
+mercury/05_bulk/server.c -> main
+
+编译mercury:
+Running commands in /home/daos/docker/daos/build/external/debug/mercury.build
+cd /home/daos/docker/daos/build/external/debug/mercury.build
+cmake -DMERCURY_USE_CHECKSUMS=OFF -DOPA_LIBRARY=/opt/daos/prereq/debug/openpa/lib/libopa.a -DOPA_INCLUDE_DIR=/opt/daos/prereq/debug/openpa/include/ -DCMAKE_INSTALL_PREFIX=/opt/daos/prereq/debug/mercury -DBUILD_EXAMPLES=OFF -DMERCURY_USE_BOOST_PP=ON -DMERCURY_ENABLE_DEBUG=ON -DBUILD_TESTING=OFF -DNA_USE_OFI=ON -DBUILD_DOCUMENTATION=OFF -DBUILD_SHARED_LIBS=ON ../mercury -DOFI_INCLUDE_DIR=/opt/daos/prereq/debug/ofi/include -DOFI_LIBRARY=/opt/daos/prereq/debug/ofi/lib/libfabric.so
+
+
+---------- test ----------
+测试: Testing/perf/na/na_bw_put.c -> main(int argc, char *argv[])
+na_perf_init
+  NA_Test_init
+  NA_Context_create
+  NA_Poll_get_fd
+  info->poll_set = hg_poll_create()
+  hg_poll_add(info->poll_set, info->poll_fd, &poll_event)
+  info->request_class = hg_request_init(na_perf_request_progress, na_perf_request_trigger, info)
+  NA_Msg_get_max_unexpected_size
+  NA_Msg_buf_alloc
+  NA_Msg_init_unexpected
+  info->msg_exp_buf = NA_Msg_buf_alloc
+  info->rma_buf = hg_mem_aligned_alloc
+na_ret = na_perf_mem_handle_recv
+na_ret = na_perf_run
+  NA_Put
+
+---------- test ----------
+
+
+
+        
+
+
+
+ucx_send:
+na_ucx_msg_send_unexpected,           /* msg_send_unexpected */
+  ucp_am_send_nbx
+
+
+
+na_ofi_check_protocol
+  na_ofi_provider_check
+    fi_getinfo
+
+
+na_ofi_initialize
+na_ofi_getinfo
+  fi_getinfo
+
+
+na_ofi_cq_read
+  fi_cq_read
+
+
+网络插件以及需要实现的接口:
+libfabric ofi plugs: static const struct na_class_ops *const na_plugin_static_g[]
+export OFI_INCLUDE_DIR=/home/xb/project/libfabric/libfabric/build/include
+export OFI_LIBRARY=/home/xb/project/libfabric/libfabric/build/lib
+
+抽象网络类函数操作表:
+NA_PLUGIN const struct na_class_ops NA_PLUGIN_OPS(ofi) = {
+    NA_OFI_CLASS_NAME,                     /* name */
+    na_ofi_get_protocol_info,              /* get_protocol_info */
+    na_ofi_check_protocol,                 /* check_protocol */
+    na_ofi_initialize,                     /* initialize */
+    na_ofi_finalize,                       /* finalize */
+    NULL,                                  /* cleanup */
+    na_ofi_has_opt_feature,                /* has_opt_feature */
+    na_ofi_context_create,                 /* context_create */
+    na_ofi_context_destroy,                /* context_destroy */
+    na_ofi_op_create,                      /* op_create */
+    na_ofi_op_destroy,                     /* op_destroy */
+    na_ofi_addr_lookup,                    /* addr_lookup */
+    na_ofi_addr_free,                      /* addr_free */
+    na_ofi_addr_set_remove,                /* addr_set_remove */
+    na_ofi_addr_self,                      /* addr_self */
+    na_ofi_addr_dup,                       /* addr_dup */
+    na_ofi_addr_cmp,                       /* addr_cmp */
+    na_ofi_addr_is_self,                   /* addr_is_self */
+    na_ofi_addr_to_string,                 /* addr_to_string */
+    na_ofi_addr_get_serialize_size,        /* addr_get_serialize_size */
+    na_ofi_addr_serialize,                 /* addr_serialize */
+    na_ofi_addr_deserialize,               /* addr_deserialize */
+    na_ofi_msg_get_max_unexpected_size,    /* msg_get_max_unexpected_size */
+    na_ofi_msg_get_max_expected_size,      /* msg_get_max_expected_size */
+    na_ofi_msg_get_unexpected_header_size, /* msg_get_unexpected_header_size */
+    NULL,                                  /* msg_get_expected_header_size */
+    na_ofi_msg_get_max_tag,                /* msg_get_max_tag */
+    na_ofi_msg_buf_alloc,                  /* msg_buf_alloc */
+    na_ofi_msg_buf_free,                   /* msg_buf_free */
+    na_ofi_msg_init_unexpected,            /* msg_init_unexpected */
+    na_ofi_msg_send_unexpected,            /* msg_send_unexpected */
+    na_ofi_msg_recv_unexpected,            /* msg_recv_unexpected */
+    na_ofi_msg_multi_recv_unexpected,      /* msg_multi_recv_unexpected */
+    NULL,                                  /* msg_init_expected */
+    na_ofi_msg_send_expected,              /* msg_send_expected */
+    na_ofi_msg_recv_expected,              /* msg_recv_expected */
+    na_ofi_mem_handle_create,              /* mem_handle_create */
+    na_ofi_mem_handle_create_segments,     /* mem_handle_create_segment */
+    na_ofi_mem_handle_free,                /* mem_handle_free */
+    na_ofi_mem_handle_get_max_segments,    /* mem_handle_get_max_segments */
+    na_ofi_mem_register,                   /* mem_register */
+    na_ofi_mem_deregister,                 /* mem_deregister */
+    na_ofi_mem_handle_get_serialize_size,  /* mem_handle_get_serialize_size */
+    na_ofi_mem_handle_serialize,           /* mem_handle_serialize */
+    na_ofi_mem_handle_deserialize,         /* mem_handle_deserialize */
+    na_ofi_put,                            /* put */
+    na_ofi_get,                            /* get */
+    na_ofi_poll_get_fd,                    /* poll_get_fd */
+    na_ofi_poll_try_wait,                  /* poll_try_wait */
+    na_ofi_progress,                       /* progress */
+    na_ofi_cancel                          /* cancel */
+};
+
+
+
+
+
+
+
+
+
+
+HG_ALLOW_MULTI_PROGRESS, 防止多个线程进入 HG_Core_progress()，添加 HG_ALLOW_MULTI_PROGRESS 选项来控制行为，如果 HG_ALLOW_MULTI_PROGRESS 为 ON，则禁用 NA_HAS_MULTI_PROGRESS
+#ifdef HG_HAS_MULTI_PROGRESS
+hg_return_t
+HG_Core_progress(hg_core_context_t *context, unsigned int timeout_ms)
+
+
+
+HG_Bulk_bind_transfer -> 绑定BULK传输
+    HG_CHECK_SUBSYS_ERROR(bulk, hg_bulk_origin == NULL, error, ret -> goto error 宏
+    hg_bulk_transfer
+        if (hg_bulk_op_pool) 
+            hg_bulk_op_pool_get -> 从内存池获取
+                do
+                hg_thread_spin_lock(&hg_bulk_op_pool->pending_list_lock)
+                if ((hg_bulk_op_id = HG_LIST_FIRST(&hg_bulk_op_pool->pending_list))) -> 获取到1个后退出
+                否则, 只允许一个线程扩容
+                for (i = 0; i < hg_bulk_op_pool->count; i++)
+                    hg_bulk_op_create(hg_bulk_op_pool->core_context, &new_op_id)
+                hg_thread_cond_broadcast(&hg_bulk_op_pool->extend_cond) -> 扩容后通知其他等待的线程
+        else hg_bulk_op_create
+
+
+返回码, 错误码转换
+static const char *const hg_return_name[] = {HG_RETURN_VALUES};
+#define X(a) a,
+typedef enum hg_return { HG_RETURN_VALUES } hg_return_t;
+#undef X
+
+网络抽象层帮助信息:
+na_test_usage(const char *execname)
+
+
+设置协议
+bulk测试参考: https://cpp.hotexamples.com/zh/examples/-/-/HG_Test_init/cpp-hg_test_init-function-examples.html
+ut 单元测试: Testing/unit/hg/CMakeLists.txt
+/home/xb/project/mercury/build/bin/hg_test_bulk
+server:
+ # HG_Core_init_opt2(): Initializing with ofi+verbs;ofi_rxm://172.17.29.63:55555, listen=1
+Testing/unit/hg/test_bulk.c -> main(int argc, char *argv[])
+    hg_ret = hg_unit_init(argc, argv, false, &info);
+        ret = HG_Test_init(argc, argv, &info->hg_test_info)
+            HG_Set_log_subsys("hg,hg_test")
+            hg_test_parse_options(argc, argv, hg_test_info)
+                long int cpu_count = sysconf(_SC_NPROCESSORS_CONF); -> 64线程
+            NA_Test_init(argc, argv, &hg_test_info->na_test_info)
+                na_test_parse_options(argc, argv, na_test_info)
+                NA_Cleanup()
+                    na_sm_cleanup
+                if (na_test_info->busy_wait) -> busy_wait 忙等待, 无阻塞
+                    na_init_info.progress_mode = NA_NO_BLOCK
+                na_init_info.thread_mode = na_test_info->use_threads ? 0 : NA_THREAD_MODE_SINGLE; -> 线程模型
+                na_test_gen_config
+                    sprintf(info_string_ptr, "%s://", na_test_info->protocol) -> 拼接协议/域
+                NA_Initialize_opt2(info_string -> ofi+tcp://172.17.29.63:55555
+                na_test_self_addr_publish
+                na_test_get_config -> 读取之前设置的配置文件
+            HG_Init_opt2
+            hg_test_self_addr_publish
+            NA_Test_barrier
+            or MPI_Barrier
+        info->buf_size_max -> 1MB
+        ret = HG_Class_set_data(info->hg_class, info, NULL)
+        HG_Class_set_handle_create_callback hg_test_handle_create_cb
+        info->context = HG_Context_create(info->hg_class)
+        info->request_class = hg_request_init hg_test_request_progress hg_test_request_trigger
+        HG_Context_set_data(info->context, context_info, free)
+        hg_test_register(info->hg_class)
+            hg_test_bulk_write_id_g = MERCURY_REGISTER(hg_class, "hg_test_bulk_write", bulk_write_in_t, bulk_write_out_t, hg_test_bulk_write_cb)
+        hg_thread_pool_init
+            for (i = 0; i < thread_count; i++)
+                hg_thread_create(&priv_pool->threads[i], hg_thread_pool_worker, (void *) priv_pool)
+                    pthread_create | win32 CreateThread
+    HG_TEST_CHECK_HG_ERROR
+
+
+要在CMake中使用C++11，只要在CMakeLists.txt中添加一行
+add_definitions(-std=c++11)
+
+
+
+
+na_sm_cleanup
+    nftw(NA_SM_TMP_DIRECTORY, na_sm_sock_path_cleanup, NA_SM_CLEANUP_NFDS, FTW_PHYS | FTW_DEPTH)
+        ret = remove(fpath)
+    nftw(NA_SM_SHM_PATH, na_sm_shm_cleanup, NA_SM_CLEANUP_NFDS, FTW_PHYS)
+        hg_mem_shm_unmap(shm_name, NULL, 0)
+            int rc = munmap(mem_ptr, size)
+            int rc = shm_unlink(name)
+            
+
+
+
+
+info, 协议, 域, 格式, 网络抽象类
+https://mercury-hpc.github.io/user/na/
+
+Plugin	Protocol	Initialization format1
+ofi	    tcp          ofi+tcp[://<hostname,IP,interface name>:<port>]
+ofi	    verbs        ofi+verbs[://[MLX device/]<hostname,IP,interface name>:<port>]2
+ofi shm ofi+shm3
+ofi opx ofi+opx[://<HFI device>:<port>]
+hg_info for provider name verbs;ofi_rxm (e.g., mlx5_0)
+
+
+
+
+提供者类型:
+/* clang-format off */
+#define NA_OFI_PROV_TYPES                                                      \
+    X(NA_OFI_PROV_NULL, "", "", 0, 0, 0, 0, 0, 0)                              \
+    X(NA_OFI_PROV_SHM,                                                         \
+      "shm",                                                                   \
+      "sm",                                                                    \
+      FI_ADDR_STR,                                                             \
+      FI_ADDR_STR,                                                             \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_SHM,                                                            \
+      FI_SOURCE | FI_MULTI_RECV,                                               \
+      NA_OFI_HMEM                                                              \
+    )                                                                          \
+    X(NA_OFI_PROV_SOCKETS,                                                     \
+      "sockets",                                                               \
+      "",                                                                      \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_AUTO,                                                        \
+      FI_PROTO_SOCK_TCP,                                                       \
+      FI_SOURCE | FI_MULTI_RECV,                                               \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD | NA_OFI_SEP | NA_OFI_DOM_SHARED       \
+    )                                                                          \
+    X(NA_OFI_PROV_TCP,                                                         \
+      "tcp",                                                                   \
+      "tcp_exp",                                                               \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_XNET,                                                           \
+      FI_MULTI_RECV,                                                           \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD                                        \
+    )                                                                          \
+    X(NA_OFI_PROV_TCP_RXM,                                                     \
+      "tcp;ofi_rxm",                                                           \
+      "",                                                                      \
+      FI_SOCKADDR_IN,                                                          \
+      FI_SOCKADDR_IN,                                                          \
+      FI_PROGRESS_MANUAL,                                                      \
+      FI_PROTO_RXM,                                                            \
+      FI_MULTI_RECV,                                                           \
+      NA_OFI_DOM_IFACE | NA_OFI_WAIT_FD                                        \
+      
+
+      
